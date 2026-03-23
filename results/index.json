@@ -1,0 +1,40 @@
+{
+  "Keiji Kaneko suit": [
+    {
+      "url": "https://ebay.com/itm/example-1",
+      "title": "Fruit of the Loom x Keiji Kaneko Double Suit — Size M — $240",
+      "snippet": "Japan exclusive athletic formal double-breasted suit, excellent condition",
+      "source": "ebay",
+      "source_type": "shopping",
+      "topic_name": "Keiji Kaneko suit",
+      "fetched_at": "2026-03-23T09:00:00+00:00",
+      "price": "$240.00 USD",
+      "novelty_score": 0.92,
+      "summary": "New eBay listing from Japan seller at $240 — first listing under $250.",
+      "tags": ["new_listing", "price_drop"],
+      "escalation_trigger": "price_drop",
+      "action_url": "https://ebay.com/itm/example-1",
+      "notified_push": true,
+      "notified_digest": false,
+      "pending_escalation": null
+    },
+    {
+      "url": "https://news.google.com/articles/example-2",
+      "title": "Keiji Kaneko collaboration sells out in minutes on ZOZOTOWN",
+      "snippet": "The double-breasted version of the Fruit of the Loom collaboration...",
+      "source": "google_news",
+      "source_type": "news",
+      "topic_name": "Keiji Kaneko suit",
+      "fetched_at": "2026-03-22T14:00:00+00:00",
+      "price": null,
+      "novelty_score": 0.78,
+      "summary": "Confirmed sell-out on ZOZOTOWN within 10 minutes of opening.",
+      "tags": ["sold_out"],
+      "escalation_trigger": null,
+      "action_url": null,
+      "notified_push": true,
+      "notified_digest": true,
+      "pending_escalation": null
+    }
+  ]
+}
