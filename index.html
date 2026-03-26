@@ -7,39 +7,28 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div id="app">
+    <main id="screens">
+      <section id="screen-highlights" class="screen" data-tab="highlights"></section>
+      <section id="screen-topics" class="screen" data-tab="topics"></section>
+      <section id="screen-settings" class="screen" data-tab="settings"></section>
+    </main>
 
-  <!-- Setup screen (shown when no PAT in localStorage) -->
-  <div id="setup-screen" class="setup-screen hidden">
-    <div class="setup-card">
-      <h2>Setup Required</h2>
-      <p>Enter a GitHub Personal Access Token with <code>actions:write</code> permission on
-         <strong id="setup-repo-name"></strong> to enable override controls.</p>
-      <p class="setup-note">The token is stored only in your browser. Read-only access (viewing results) works without a token.</p>
-      <div class="setup-row">
-        <input type="password" id="pat-input" placeholder="github_pat_..." autocomplete="off">
-        <button id="pat-save-btn">Save</button>
+    <nav id="tab-bar">
+      <button class="tab-btn active" data-tab="highlights">Highlights</button>
+      <button class="tab-btn" data-tab="topics">Topics</button>
+      <button class="tab-btn" data-tab="settings">Settings</button>
+    </nav>
+
+    <div id="detail-sheet" class="detail-sheet hidden" role="dialog" aria-modal="true">
+      <div id="detail-backdrop" class="detail-backdrop"></div>
+      <div id="detail-panel" class="detail-panel">
+        <button id="detail-close" class="detail-close" aria-label="Close">&times;</button>
+        <div id="detail-content"></div>
       </div>
-      <button id="setup-skip-btn" class="btn-secondary">Skip — view only</button>
     </div>
   </div>
 
-  <!-- Main app -->
-  <div id="app" class="hidden">
-    <header class="app-header">
-      <div class="header-left">
-        <h1>Topic Tracker</h1>
-        <span id="last-updated" class="last-updated"></span>
-      </div>
-      <div class="header-right">
-        <button id="refresh-btn" class="btn-icon" title="Refresh">&#8635;</button>
-      </div>
-    </header>
-
-    <main id="topics-container">
-      <!-- Topic cards rendered here by JS -->
-    </main>
-  </div>
-
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
