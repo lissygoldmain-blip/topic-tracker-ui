@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>data.js Tests</title></head>
+<body>
+<h1>data.js Unit Tests</h1>
+<pre id="output"></pre>
+<script type="module">
+const out = document.getElementById('output');
+let pass = 0, fail = 0;
+
+function assert(label, condition) {
+  if (condition) {
+    out.textContent += `✅ ${label}\n`;
+    pass++;
+  } else {
+    out.textContent += `❌ ${label}\n`;
+    fail++;
+  }
+}
+
+function assertEqual(label, actual, expected) {
+  const ok = JSON.stringify(actual) === JSON.stringify(expected);
+  if (!ok) out.textContent += `   got: ${JSON.stringify(actual)}\n   exp: ${JSON.stringify(expected)}\n`;
+  assert(label, ok);
+}
+
+// -- Import functions under test --
+import {
+  computeHighlights,
+  sortResults,
+  formatRelativeTime,
+  topicColor,
+  computeLastFetched,
+  loadReadSet,
+  markRead,
+} from './data.js';
+
+// ---- computeHighlights ----
+{
+  const results = [
+    { novelty_score: 0.9, escalation_trigger: null },
+    { novelty_score: 0.75, escalation_trigger: null },
+    { novelty_score: 0.5, escalation_trigger: 'drop_confirmed' },
+    { novelty_score: 0.85, escalation_trigger: null },
+  ];
+  const h = computeHighlights(results);
+  assert('highlights: novelty >= 0.8 included', h.length === 3);
+  assert('highlights: novelty < 0.8 with escalation included', h.some(r => r.escalation_trigger));
+  assert('highlights: low novelty without escalation excluded', !h.some(r => r.novelty_score === 0.75));
+}
+
+// ---- sortResults ----
+{
+  const readSet = new Set(['https://b.com']);
+  const results = [
+    { url: 'https://a.com', novelty_score: 0.9 },
+    { url: 'https://b.com', novelty_score: 0.95 }, // read
+    { url: 'https://c.com', novelty_score: 0.85 },
+  ];
+  const sorted = sortResults(results, readSet);
+  assert('sort: unread before read', !readSet.has(sorted[0].url) && !readSet.has(sorted[1].url));
+  assert('sort: unread sorted by novelty desc', sorted[0].novelty_score >= sorted[1].novelty_score);
+  assert('sort: read item last', readSet.has(sorted[2].url));
+}
+
+// ---- formatRelativeTime ----
+{
+  const now = Date.now();
+  assert('format: < 1h shows minutes', formatRelativeTime(new Date(now - 30 * 60 * 1000)).endsWith('m ago'));
+  assert('format: 2h shows hours', formatRelativeTime(new Date(now - 2 * 3600 * 1000)).endsWith('h ago'));
+  assert('format: 3 days shows date', /[A-Z][a-z]+ \d+/.test(formatRelativeTime(new Date(now - 3 * 86400 * 1000))));
+}
+
+// ---- topicColor ----
+{
+  const c1 = topicColor('AI Research');
+  const c2 = topicColor('AI Research');
+  const c3 = topicColor('Health');
+  assert('topicColor: stable for same name', c1 === c2);
+  assert('topicColor: different for different names', c1 !== c3);
+  assert('topicColor: returns hsl string', c1.startsWith('hsl('));
+}
+
+// ---- computeLastFetched ----
+{
+  const index = {
+    'Topic A': [{ fetched_at: '2026-03-26T08:00:00+00:00' }],
+    'Topic B': [{ fetched_at: '2026-03-26T10:00:00+00:00' }, { fetched_at: '2026-03-25T09:00:00+00:00' }],
+  };
+  const last = computeLastFetched(index);
+  assert('computeLastFetched: returns max date', last !== null && !isNaN(last.getTime()) && last.getTime() === new Date('2026-03-26T10:00:00+00:00').getTime());
+  assert('computeLastFetched: empty index returns null', computeLastFetched({}) === null);
+}
+
+// ---- loadReadSet / markRead round-trip ----
+{
+  localStorage.removeItem('tracker_read_urls');
+  const set = loadReadSet();
+  assert('loadReadSet: empty localStorage returns empty Set', set.size === 0);
+  markRead(set, 'https://example.com/test');
+  const reloaded = loadReadSet();
+  assert('markRead/loadReadSet: URL survives round-trip', reloaded.has('https://example.com/test'));
+  assert('markRead/loadReadSet: other URLs not present', !reloaded.has('https://example.com/other'));
+  localStorage.removeItem('tracker_read_urls');
+}
+
+out.textContent += `\n${pass} passed, ${fail} failed\n`;
+</script>
+</body>
+</html>
