@@ -1,348 +1,392 @@
 // app.js
-//
-// Security note: All dynamic content is passed through escHtml() before
-// being inserted via innerHTML. This escapes &, <, >, and " — sufficient
-// to prevent XSS from the self-controlled index.json data source.
+import {
+  fetchIndex, loadReadSet, markRead,
+  computeHighlights, sortResults,
+  formatRelativeTime, formatAbsoluteTime,
+  topicColor, topicBg, computeLastFetched, flatResults,
+} from './data.js';
 
-const CONFIG = {
-  // Update this to your actual GitHub username/repo before deploying
-  privateRepo: "YOUR_USERNAME/topic-tracker",
-  resultsPath: "./results/index.json",
-};
+// ── App state ────────────────────────────────────────────────────────────
+let index = {};       // { topicName: [result, ...] }
+let readSet = new Set();
+let loadError = false;
+let topicsSubView = null; // null = topic list; string = topic name being viewed
 
-// ---- Escape helper (used on ALL dynamic values before innerHTML) ----
-function escHtml(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+// ── Tab switching ────────────────────────────────────────────────────────
+const tabBtns = document.querySelectorAll('.tab-btn');
+const screens = document.querySelectorAll('.screen');
+
+function switchTab(tabName) {
+  tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === tabName));
+  screens.forEach(s => s.classList.toggle('active', s.dataset.tab === tabName));
+  renderActiveScreen(tabName);
 }
 
-// ---- State ----
-let PAT = localStorage.getItem("tracker_pat") || null;
-let indexData = {};
-let sortMode = {}; // topicName → "newest" | "score"
+tabBtns.forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
 
-// ---- Init ----
-document.addEventListener("DOMContentLoaded", init);
+function renderActiveScreen(tabName) {
+  if (tabName === 'highlights') renderHighlights();
+  if (tabName === 'topics') {
+    if (topicsSubView) renderTopicResults(topicsSubView);
+    else renderTopicList();
+  }
+  if (tabName === 'settings') renderSettings();
+}
 
+// ── Bootstrap ────────────────────────────────────────────────────────────
 async function init() {
-  document.getElementById("setup-repo-name").textContent = CONFIG.privateRepo;
-  document.getElementById("pat-save-btn").addEventListener("click", savePat);
-  document.getElementById("setup-skip-btn").addEventListener("click", skipSetup);
-  document.getElementById("refresh-btn").addEventListener("click", loadAndRender);
-
-  if (!PAT) {
-    showSetup();
-  } else {
-    showApp();
-    await loadAndRender();
-  }
+  readSet = loadReadSet();
+  await loadData();
+  switchTab('highlights');
 }
 
-function showSetup() {
-  document.getElementById("setup-screen").classList.remove("hidden");
-  document.getElementById("app").classList.add("hidden");
-}
-
-function showApp() {
-  document.getElementById("setup-screen").classList.add("hidden");
-  document.getElementById("app").classList.remove("hidden");
-}
-
-function savePat() {
-  const val = document.getElementById("pat-input").value.trim();
-  if (val) {
-    PAT = val;
-    localStorage.setItem("tracker_pat", val);
-  }
-  showApp();
-  loadAndRender();
-}
-
-function skipSetup() {
-  showApp();
-  loadAndRender();
-}
-
-// ---- Data loading ----
-async function loadAndRender() {
+async function loadData() {
   try {
-    const res = await fetch(CONFIG.resultsPath + "?t=" + Date.now());
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    indexData = await res.json();
-  } catch (e) {
-    const el = document.getElementById("topics-container");
-    el.textContent = "Could not load results: " + e.message;
-    el.style.color = "#dc2626";
-    el.style.padding = "1rem";
+    index = await fetchIndex();
+    loadError = false;
+  } catch (err) {
+    console.error('Failed to load index.json', err);
+    loadError = true;
+    index = {};
+  }
+}
+
+// ── Result card ───────────────────────────────────────────────────────────
+
+function renderCard(result, { showTopicPill = true, showNoveltyDot = false } = {}) {
+  const isRead = readSet.has(result.url);
+  const div = document.createElement('div');
+  div.className = 'result-card' + (isRead ? ' is-read' : '');
+
+  const header = document.createElement('div');
+  header.className = 'card-header';
+
+  if (showTopicPill) {
+    const pill = document.createElement('span');
+    pill.className = 'topic-pill';
+    pill.textContent = result.topic_name;
+    pill.style.color = topicColor(result.topic_name);
+    pill.style.background = topicBg(result.topic_name);
+    header.appendChild(pill);
+  }
+
+  if (result.escalation_trigger) {
+    const badge = document.createElement('span');
+    badge.className = 'escalation-badge';
+    badge.textContent = `⚡ ${result.escalation_trigger}`;
+    header.appendChild(badge);
+  }
+
+  if (showNoveltyDot && result.novelty_score >= 0.8) {
+    const dot = document.createElement('span');
+    dot.className = 'novelty-dot ' + (result.novelty_score >= 0.9 ? 'high' : 'medium');
+    header.appendChild(dot);
+  }
+
+  const title = document.createElement('div');
+  title.className = 'card-title';
+  title.textContent = result.title;
+
+  const snippet = document.createElement('div');
+  snippet.className = 'card-snippet';
+  snippet.textContent = result.snippet;
+
+  const meta = document.createElement('div');
+  meta.className = 'card-meta';
+  const fetchedDate = new Date(result.fetched_at);
+  meta.textContent = `${result.source} · ${formatRelativeTime(fetchedDate)}`;
+
+  div.appendChild(header);
+  div.appendChild(title);
+  div.appendChild(snippet);
+  div.appendChild(meta);
+
+  div.addEventListener('click', () => openDetail(result));
+  return div;
+}
+
+// ── Detail sheet ─────────────────────────────────────────────────────────
+
+const detailSheet   = document.getElementById('detail-sheet');
+const detailClose   = document.getElementById('detail-close');
+const detailContent = document.getElementById('detail-content');
+const detailBackdrop = document.getElementById('detail-backdrop');
+
+function openDetail(result) {
+  markRead(readSet, result.url);
+
+  const fetchedDate = new Date(result.fetched_at);
+
+  detailContent.innerHTML = '';
+
+  const title = document.createElement('h2');
+  title.className = 'detail-title';
+  title.textContent = result.title;
+
+  const meta = document.createElement('div');
+  meta.className = 'detail-meta';
+  meta.textContent = `${result.source} · ${formatAbsoluteTime(fetchedDate)}`;
+
+  const summary = document.createElement('p');
+  summary.className = 'detail-summary';
+  summary.textContent = result.summary || result.snippet || '';
+
+  detailContent.appendChild(title);
+  detailContent.appendChild(meta);
+  detailContent.appendChild(summary);
+
+  if (result.tags && result.tags.length > 0) {
+    const tagsRow = document.createElement('div');
+    tagsRow.className = 'tags-row';
+    result.tags.forEach(tag => {
+      const pill = document.createElement('span');
+      pill.className = 'tag-pill';
+      pill.textContent = tag;
+      tagsRow.appendChild(pill);
+    });
+    detailContent.appendChild(tagsRow);
+  }
+
+  const score = document.createElement('div');
+  score.className = 'detail-score';
+  score.textContent = `Novelty: ${result.novelty_score ?? '—'}`;
+  detailContent.appendChild(score);
+
+  if (result.price) {
+    const price = document.createElement('div');
+    price.className = 'detail-price';
+    price.textContent = `Price: ${result.price}`;
+    detailContent.appendChild(price);
+  }
+
+  if (result.escalation_trigger) {
+    const esc = document.createElement('div');
+    esc.className = 'detail-escalation';
+    esc.textContent = `⚡ ${result.escalation_trigger}`;
+    detailContent.appendChild(esc);
+  }
+
+  const openBtn = document.createElement('a');
+  openBtn.className = 'open-btn';
+  openBtn.href = result.url;
+  openBtn.target = '_blank';
+  openBtn.rel = 'noopener noreferrer';
+  openBtn.textContent = 'Open →';
+  detailContent.appendChild(openBtn);
+
+  detailSheet.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+
+  // Re-render active screen to show updated read state
+  const activeBtn = document.querySelector('.tab-btn.active');
+  if (activeBtn) renderActiveScreen(activeBtn.dataset.tab);
+}
+
+function closeDetail() {
+  detailSheet.classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+detailClose.addEventListener('click', closeDetail);
+detailBackdrop.addEventListener('click', closeDetail);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+
+// ── Shared utilities ───────────────────────────────────────────────────────
+
+function errorState(onRetry) {
+  const div = document.createElement('div');
+  div.className = 'error-state';
+  const p = document.createElement('p');
+  p.textContent = 'Couldn\'t load results.';
+  div.appendChild(p);
+  const btn = document.createElement('button');
+  btn.textContent = 'Retry';
+  btn.addEventListener('click', onRetry);
+  div.appendChild(btn);
+  return div;
+}
+
+// ── Stub render functions (filled in Tasks 6–8) ───────────────────────────
+function renderHighlights() {
+  const screen = document.getElementById('screen-highlights');
+  screen.innerHTML = '';
+
+  const heading = document.createElement('h1');
+  heading.className = 'screen-heading';
+  heading.textContent = 'Highlights';
+  screen.appendChild(heading);
+
+  if (loadError) {
+    screen.appendChild(errorState(() => { loadData().then(() => renderHighlights()); }));
     return;
   }
-  renderAll();
+
+  const all = flatResults(index);
+  const highlights = computeHighlights(all);
+  const sorted = sortResults(highlights, readSet);
+
+  if (sorted.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = 'Nothing new to highlight.';
+    screen.appendChild(empty);
+    return;
+  }
+
+  sorted.forEach(result => {
+    screen.appendChild(renderCard(result, { showTopicPill: true, showNoveltyDot: true }));
+  });
 }
+function renderTopicList() {
+  topicsSubView = null;
+  const screen = document.getElementById('screen-topics');
+  screen.innerHTML = '';
 
-// ---- Rendering ----
-function renderAll() {
-  const container = document.getElementById("topics-container");
-  container.innerHTML = "";
+  const heading = document.createElement('h1');
+  heading.className = 'screen-heading';
+  heading.textContent = 'Topics';
+  screen.appendChild(heading);
 
-  let latest = null;
-  for (const results of Object.values(indexData)) {
-    for (const r of results) {
-      if (!latest || r.fetched_at > latest) latest = r.fetched_at;
-    }
-  }
-  if (latest) {
-    document.getElementById("last-updated").textContent =
-      "Updated " + timeAgo(latest);
+  if (loadError) {
+    screen.appendChild(errorState(() => { loadData().then(() => renderTopicList()); }));
+    return;
   }
 
-  const topicNames = Object.keys(indexData);
+  const topicNames = Object.keys(index);
+
   if (topicNames.length === 0) {
-    container.textContent = "No results yet. Waiting for first poll run.";
-    container.style.padding = "1rem";
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = 'No topics yet.';
+    screen.appendChild(empty);
     return;
   }
 
-  for (const name of topicNames) {
-    container.appendChild(buildTopicCard(name, indexData[name]));
-  }
-}
+  topicNames.forEach(name => {
+    const results = index[name] || [];
+    const hasEscalation = results.some(r => r.escalation_trigger !== null);
 
-function buildTopicCard(topicName, results) {
-  const card = document.createElement("div");
-  card.className = "topic-card";
+    const row = document.createElement('div');
+    row.className = 'topic-row';
 
-  const mode = sortMode[topicName] || "newest";
-  const sorted = sortResults([...results], mode);
-  const pending = results.find(r => r.pending_escalation);
-  const urgency = inferUrgency(results);
+    const nameEl = document.createElement('span');
+    nameEl.className = 'topic-row-name';
+    nameEl.textContent = name;
 
-  // All interpolated values are escaped — see escHtml() note at top
-  const headerHtml = buildTopicHeader(topicName, urgency, results.length);
-  const pendingHtml = pending ? buildPendingBanner(pending.pending_escalation) : "";
-  const controlsHtml = buildControls();
-  const feedHtml = buildSortBar(topicName, mode) + sorted.map(buildResultRow).join("");
+    const meta = document.createElement('span');
+    meta.className = 'topic-row-meta';
+    meta.textContent = `${results.length} result${results.length !== 1 ? 's' : ''}`;
 
-  const feedEl = document.createElement("div");
-  feedEl.className = "results-feed";
-  feedEl.innerHTML = feedHtml;
+    row.appendChild(nameEl);
+    row.appendChild(meta);
 
-  card.innerHTML = headerHtml + pendingHtml + controlsHtml;
-  card.appendChild(feedEl);
-
-  // Toggle feed
-  card.querySelector(".topic-header").addEventListener("click", () => {
-    feedEl.classList.toggle("hidden");
-    card.querySelector(".chevron").classList.toggle("open");
-  });
-
-  // Sort buttons
-  feedEl.querySelectorAll(".sort-btn").forEach(btn => {
-    btn.addEventListener("click", e => {
-      e.stopPropagation();
-      sortMode[topicName] = btn.dataset.sort;
-      renderAll();
-    });
-  });
-
-  // Override buttons
-  const wire = (sel, fn) => {
-    const el = card.querySelector(sel);
-    if (el) el.addEventListener("click", fn);
-  };
-
-  wire(".apply-override-btn", e => {
-    e.stopPropagation();
-    applyOverride(
-      topicName, "escalate",
-      card.querySelector(".level-select").value,
-      card.querySelector(".hours-select").value,
-    );
-  });
-  wire(".revert-btn", e => { e.stopPropagation(); applyOverride(topicName, "revert", "", "0"); });
-  wire(".snooze-btn", e => { e.stopPropagation(); applyOverride(topicName, "snooze", "", "24"); });
-  wire(".escalate-yes-btn", e => {
-    e.stopPropagation();
-    applyOverride(topicName, "escalate", e.target.dataset.level || "high", "48");
-  });
-  wire(".escalate-dismiss-btn", e => {
-    e.stopPropagation();
-    applyOverride(topicName, "dismiss", "", "0");
-  });
-
-  return card;
-}
-
-function inferUrgency(results) {
-  const tags = results.flatMap(r => r.tags || []);
-  if (tags.includes("drop_confirmed")) return "urgent";
-  if (tags.includes("upcoming_drop")) return "high";
-  if (tags.includes("restock_rumored")) return "medium";
-  return "medium";
-}
-
-function buildTopicHeader(topicName, urgency, count) {
-  return (
-    '<div class="topic-header">' +
-    '<span class="topic-name">' + escHtml(topicName) + "</span>" +
-    '<span class="urgency-badge urgency-' + urgency + '">' + urgency + "</span>" +
-    '<span class="topic-meta">' + count + " result" + (count !== 1 ? "s" : "") + "</span>" +
-    '<span class="chevron open">&#9660;</span>' +
-    "</div>"
-  );
-}
-
-function buildPendingBanner(pending) {
-  const level = pending.suggested_level || "high";
-  return (
-    '<div class="pending-banner">' +
-    "<span>&#9889; Signal detected (<strong>" + escHtml(pending.trigger) + "</strong>)" +
-    " \u2014 escalate to <strong>" + escHtml(level) + "</strong>?</span>" +
-    '<button class="btn-small escalate-yes-btn" data-level="' + escHtml(level) + '">Escalate</button>' +
-    '<button class="btn-small btn-secondary escalate-dismiss-btn">Dismiss</button>' +
-    "</div>"
-  );
-}
-
-function buildControls() {
-  if (!PAT) {
-    return (
-      '<div class="topic-controls">' +
-      '<span class="controls-locked">Add a PAT to enable override controls</span>' +
-      "</div>"
-    );
-  }
-  return (
-    '<div class="topic-controls">' +
-    '<div class="override-form">' +
-    '<select class="level-select">' +
-    "<option value=\"urgent\">Urgent</option>" +
-    "<option value=\"high\" selected>High</option>" +
-    "<option value=\"medium\">Medium</option>" +
-    "</select>" +
-    '<select class="hours-select">' +
-    "<option value=\"24\">24h</option>" +
-    "<option value=\"48\" selected>48h</option>" +
-    "<option value=\"72\">72h</option>" +
-    "</select>" +
-    '<button class="btn-small apply-override-btn">Escalate</button>' +
-    "</div>" +
-    '<button class="btn-small btn-secondary revert-btn">Revert</button>' +
-    '<button class="btn-small btn-secondary snooze-btn">Snooze 24h</button>' +
-    "</div>"
-  );
-}
-
-function buildSortBar(topicName, mode) {
-  return (
-    '<div class="results-sort-bar">Sort: ' +
-    '<button class="sort-btn ' + (mode === "newest" ? "active" : "") +
-    '" data-sort="newest">Newest</button>' +
-    '<button class="sort-btn ' + (mode === "score" ? "active" : "") +
-    '" data-sort="score">Score</button>' +
-    "</div>"
-  );
-}
-
-function buildResultRow(r) {
-  const url = r.action_url || r.url;
-  const score = r.novelty_score;
-  const tags = (r.tags || []).filter(t => t !== "noise");
-  const tagsHtml = tags.map(t =>
-    '<span class="tag-pill tag-' + escHtml(t) + '">' +
-    escHtml(t.replace(/_/g, " ")) + "</span>"
-  ).join("");
-  const priceHtml = r.price
-    ? '<span class="source-badge" style="background:#dcfce7;color:#166534">' +
-      escHtml(r.price) + "</span>"
-    : "";
-
-  return (
-    '<div class="result-row">' +
-    '<div class="result-title"><a href="' + escHtml(url) +
-    '" target="_blank" rel="noopener">' + escHtml(r.title) + "</a></div>" +
-    (r.summary ? '<div class="result-summary">' + escHtml(r.summary) + "</div>" : "") +
-    '<div class="result-meta">' +
-    '<span class="source-badge">' + escHtml(r.source) + "</span>" +
-    priceHtml +
-    (score !== null && score !== undefined ? scoreBarHtml(score) : "") +
-    tagsHtml +
-    '<span class="timestamp">' + timeAgo(r.fetched_at) + "</span>" +
-    "</div>" +
-    "</div>"
-  );
-}
-
-// ---- Override actions ----
-async function applyOverride(topic, action, level, durationHours) {
-  if (!PAT) { alert("No PAT configured."); return; }
-  const [owner, repo] = CONFIG.privateRepo.split("/");
-  const apiUrl =
-    "https://api.github.com/repos/" + owner + "/" + repo +
-    "/actions/workflows/apply-override.yml/dispatches";
-  try {
-    const res = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + PAT,
-        Accept: "application/vnd.github+json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        ref: "main",
-        inputs: { topic, action, level, duration_hours: String(durationHours) },
-      }),
-    });
-    if (res.status === 204) {
-      showToast("Applied: " + action + ' for "' + topic + '"');
-    } else {
-      showToast("Error " + res.status + ": " + await res.text(), true);
+    if (hasEscalation) {
+      const esc = document.createElement('span');
+      esc.className = 'escalation-badge topic-escalation-badge';
+      esc.textContent = '⚡';
+      row.appendChild(esc);
     }
-  } catch (e) {
-    showToast("Network error: " + e.message, true);
+
+    row.addEventListener('click', () => renderTopicResults(name));
+    screen.appendChild(row);
+  });
+}
+
+function renderTopicResults(topicName) {
+  topicsSubView = topicName;
+  const screen = document.getElementById('screen-topics');
+  screen.innerHTML = '';
+
+  const backBtn = document.createElement('button');
+  backBtn.className = 'back-btn';
+  backBtn.textContent = '← Topics';
+  backBtn.addEventListener('click', renderTopicList);
+  screen.appendChild(backBtn);
+
+  const heading = document.createElement('h1');
+  heading.className = 'screen-heading';
+  heading.textContent = topicName;
+  screen.appendChild(heading);
+
+  const results = index[topicName] || [];
+
+  if (results.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = 'No results yet for this topic.';
+    screen.appendChild(empty);
+    return;
   }
+
+  const sorted = sortResults(results, readSet);
+  sorted.forEach(result => {
+    screen.appendChild(renderCard(result, { showTopicPill: false, showNoveltyDot: false }));
+  });
 }
 
-// ---- Utilities ----
-function sortResults(results, mode) {
-  if (mode === "score") {
-    return results.sort((a, b) => (b.novelty_score || 0) - (a.novelty_score || 0));
-  }
-  return results.sort((a, b) => b.fetched_at.localeCompare(a.fetched_at));
+function renderSettings() {
+  const screen = document.getElementById('screen-settings');
+  screen.innerHTML = '';
+
+  const heading = document.createElement('h1');
+  heading.className = 'screen-heading';
+  heading.textContent = 'Settings';
+  screen.appendChild(heading);
+
+  // Last fetched
+  const lastSection = document.createElement('div');
+  lastSection.className = 'settings-section';
+  const lastLabel = document.createElement('div');
+  lastLabel.className = 'settings-label';
+  lastLabel.textContent = 'Last fetched';
+  const lastValue = document.createElement('div');
+  lastValue.className = 'settings-value';
+  const lastDate = computeLastFetched(index);
+  lastValue.textContent = lastDate ? formatAbsoluteTime(lastDate) : '\u2014';
+  lastSection.appendChild(lastLabel);
+  lastSection.appendChild(lastValue);
+  screen.appendChild(lastSection);
+
+  // Refresh button
+  const refreshSection = document.createElement('div');
+  refreshSection.className = 'settings-section';
+  const refreshLabel = document.createElement('div');
+  refreshLabel.className = 'settings-label';
+  refreshLabel.textContent = 'Data';
+  const refreshBtn = document.createElement('button');
+  refreshBtn.className = 'refresh-btn';
+  refreshBtn.textContent = 'Refresh';
+
+  let feedbackTimeout = null;
+
+  refreshBtn.addEventListener('click', async () => {
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = 'Refreshing\u2026';
+    clearTimeout(feedbackTimeout);
+
+    await loadData();
+    // loadData() swallows exceptions and sets loadError — check the flag
+    if (!loadError) {
+      refreshBtn.textContent = 'Updated';
+      feedbackTimeout = setTimeout(() => {
+        refreshBtn.textContent = 'Refresh';
+        refreshBtn.disabled = false;
+        renderSettings(); // re-render to update last fetched
+      }, 2000);
+    } else {
+      refreshBtn.textContent = 'Couldn\u2019t refresh \u2014 try again.';
+      feedbackTimeout = setTimeout(() => {
+        refreshBtn.textContent = 'Refresh';
+        refreshBtn.disabled = false;
+      }, 3000);
+    }
+  });
+
+  refreshSection.appendChild(refreshLabel);
+  refreshSection.appendChild(refreshBtn);
+  screen.appendChild(refreshSection);
 }
 
-function timeAgo(isoString) {
-  const diff = Date.now() - new Date(isoString).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return mins + "m ago";
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return hrs + "h ago";
-  return Math.floor(hrs / 24) + "d ago";
-}
-
-function scoreBarHtml(score) {
-  const pct = Math.round(score * 100);
-  const cls = score >= 0.8 ? "score-high" : score >= 0.6 ? "score-medium" : "score-low";
-  return (
-    '<div class="score-bar-wrap">' +
-    '<div class="score-bar"><div class="score-bar-fill ' + cls +
-    '" style="width:' + pct + '%"></div></div>' +
-    '<span class="score-label">' + score.toFixed(2) + "</span>" +
-    "</div>"
-  );
-}
-
-function showToast(msg, isError) {
-  const el = document.createElement("div");
-  el.style.cssText =
-    "position:fixed;bottom:1.5rem;right:1.5rem;" +
-    "background:" + (isError ? "#dc2626" : "#1a1a1a") + ";" +
-    "color:white;padding:0.75rem 1.25rem;border-radius:6px;" +
-    "font-size:14px;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,0.2);max-width:320px;";
-  el.textContent = msg;
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 3500);
-}
+init();
