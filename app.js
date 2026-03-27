@@ -10,6 +10,7 @@ import {
 let index = {};       // { topicName: [result, ...] }
 let readSet = new Set();
 let loadError = false;
+let topicsSubView = null; // null = topic list; string = topic name being viewed
 
 // ── Tab switching ────────────────────────────────────────────────────────
 const tabBtns = document.querySelectorAll('.tab-btn');
@@ -28,7 +29,7 @@ tabBtns.forEach(btn => {
 function renderActiveScreen(tabName) {
   if (tabName === 'highlights') renderHighlights();
   if (tabName === 'topics') {
-    if (typeof topicsSubView !== 'undefined' && topicsSubView) renderTopicResults(topicsSubView);
+    if (topicsSubView) renderTopicResults(topicsSubView);
     else renderTopicList();
   }
   if (tabName === 'settings') renderSettings();
@@ -238,7 +239,93 @@ function renderHighlights() {
     screen.appendChild(renderCard(result, { showTopicPill: true, showNoveltyDot: true }));
   });
 }
-function renderTopicList() {}
+function renderTopicList() {
+  topicsSubView = null;
+  const screen = document.getElementById('screen-topics');
+  screen.innerHTML = '';
+
+  const heading = document.createElement('h1');
+  heading.className = 'screen-heading';
+  heading.textContent = 'Topics';
+  screen.appendChild(heading);
+
+  if (loadError) {
+    screen.appendChild(errorState(() => { loadData().then(() => renderTopicList()); }));
+    return;
+  }
+
+  const topicNames = Object.keys(index);
+
+  if (topicNames.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = 'No topics yet.';
+    screen.appendChild(empty);
+    return;
+  }
+
+  topicNames.forEach(name => {
+    const results = index[name] || [];
+    const hasEscalation = results.some(r => r.escalation_trigger !== null);
+
+    const row = document.createElement('div');
+    row.className = 'topic-row';
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'topic-row-name';
+    nameEl.textContent = name;
+
+    const meta = document.createElement('span');
+    meta.className = 'topic-row-meta';
+    meta.textContent = `${results.length} result${results.length !== 1 ? 's' : ''}`;
+
+    row.appendChild(nameEl);
+    row.appendChild(meta);
+
+    if (hasEscalation) {
+      const esc = document.createElement('span');
+      esc.className = 'escalation-badge topic-escalation-badge';
+      esc.textContent = '⚡';
+      row.appendChild(esc);
+    }
+
+    row.addEventListener('click', () => renderTopicResults(name));
+    screen.appendChild(row);
+  });
+}
+
+function renderTopicResults(topicName) {
+  topicsSubView = topicName;
+  const screen = document.getElementById('screen-topics');
+  screen.innerHTML = '';
+
+  const backBtn = document.createElement('button');
+  backBtn.className = 'back-btn';
+  backBtn.textContent = '← Topics';
+  backBtn.addEventListener('click', renderTopicList);
+  screen.appendChild(backBtn);
+
+  const heading = document.createElement('h1');
+  heading.className = 'screen-heading';
+  heading.textContent = topicName;
+  screen.appendChild(heading);
+
+  const results = index[topicName] || [];
+
+  if (results.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = 'No results yet for this topic.';
+    screen.appendChild(empty);
+    return;
+  }
+
+  const sorted = sortResults(results, readSet);
+  sorted.forEach(result => {
+    screen.appendChild(renderCard(result, { showTopicPill: false, showNoveltyDot: false }));
+  });
+}
+
 function renderSettings() {}
 
 init();
