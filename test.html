@@ -29,10 +29,13 @@ import {
   computeHighlights,
   sortResults,
   formatRelativeTime,
+  formatAbsoluteTime,
   topicColor,
+  topicBg,
   computeLastFetched,
   loadReadSet,
   markRead,
+  flatResults,
 } from './data.js';
 
 // ---- computeHighlights ----
@@ -102,6 +105,35 @@ import {
   assert('markRead/loadReadSet: URL survives round-trip', reloaded.has('https://example.com/test'));
   assert('markRead/loadReadSet: other URLs not present', !reloaded.has('https://example.com/other'));
   localStorage.removeItem('tracker_read_urls');
+}
+
+// ---- formatAbsoluteTime ----
+{
+  const d = new Date('2026-03-24T10:42:00+00:00');
+  const s = formatAbsoluteTime(d);
+  assert('formatAbsoluteTime: returns non-empty string', typeof s === 'string' && s.length > 0);
+  assert('formatAbsoluteTime: contains year', s.includes('2026'));
+}
+
+// ---- topicBg ----
+{
+  const bg1 = topicBg('AI Research');
+  const bg2 = topicBg('AI Research');
+  const bg3 = topicBg('Health');
+  assert('topicBg: stable for same name', bg1 === bg2);
+  assert('topicBg: different from topicColor', bg1 !== topicColor('AI Research'));
+  assert('topicBg: returns hsl string', bg1.startsWith('hsl('));
+}
+
+// ---- flatResults ----
+{
+  const index = {
+    'Topic A': [{ url: 'https://a.com' }, { url: 'https://b.com' }],
+    'Topic B': [{ url: 'https://c.com' }],
+  };
+  const flat = flatResults(index);
+  assert('flatResults: flattens all topics', flat.length === 3);
+  assert('flatResults: empty index returns empty array', flatResults({}).length === 0);
 }
 
 out.textContent += `\n${pass} passed, ${fail} failed\n`;
