@@ -7,6 +7,7 @@
   --text-secondary: #6b6b6b;
   --accent: #0066cc;
   --escalation: #d97706;
+  --escalation-bg: #fef3c7;
   --dot-high: #22c55e;
   --dot-med: #eab308;
   --tab-h: 56px;
@@ -24,6 +25,7 @@
     --text-secondary: #888888;
     --accent: #4da3ff;
     --escalation: #f59e0b;
+    --escalation-bg: #422006;
   }
 }
 
@@ -228,7 +230,7 @@ body {
   display: inline-block;
   font-size: 13px; font-weight: 600;
   color: var(--escalation);
-  background: #fef3c7;
+  background: var(--escalation-bg);
   padding: 6px 12px;
   border-radius: 8px;
   margin-bottom: 16px;
