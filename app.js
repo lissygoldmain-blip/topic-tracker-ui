@@ -326,6 +326,67 @@ function renderTopicResults(topicName) {
   });
 }
 
-function renderSettings() {}
+function renderSettings() {
+  const screen = document.getElementById('screen-settings');
+  screen.innerHTML = '';
+
+  const heading = document.createElement('h1');
+  heading.className = 'screen-heading';
+  heading.textContent = 'Settings';
+  screen.appendChild(heading);
+
+  // Last fetched
+  const lastSection = document.createElement('div');
+  lastSection.className = 'settings-section';
+  const lastLabel = document.createElement('div');
+  lastLabel.className = 'settings-label';
+  lastLabel.textContent = 'Last fetched';
+  const lastValue = document.createElement('div');
+  lastValue.className = 'settings-value';
+  const lastDate = computeLastFetched(index);
+  lastValue.textContent = lastDate ? formatAbsoluteTime(lastDate) : '\u2014';
+  lastSection.appendChild(lastLabel);
+  lastSection.appendChild(lastValue);
+  screen.appendChild(lastSection);
+
+  // Refresh button
+  const refreshSection = document.createElement('div');
+  refreshSection.className = 'settings-section';
+  const refreshLabel = document.createElement('div');
+  refreshLabel.className = 'settings-label';
+  refreshLabel.textContent = 'Data';
+  const refreshBtn = document.createElement('button');
+  refreshBtn.className = 'refresh-btn';
+  refreshBtn.textContent = 'Refresh';
+
+  let feedbackTimeout = null;
+
+  refreshBtn.addEventListener('click', async () => {
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = 'Refreshing\u2026';
+    clearTimeout(feedbackTimeout);
+
+    await loadData();
+    // loadData() swallows exceptions and sets loadError — check the flag
+    if (!loadError) {
+      refreshBtn.textContent = 'Updated';
+      feedbackTimeout = setTimeout(() => {
+        refreshBtn.textContent = 'Refresh';
+        refreshBtn.disabled = false;
+        renderSettings(); // re-render to update last fetched
+      }, 2000);
+    } else {
+      refreshBtn.textContent = 'Couldn\u2019t refresh \u2014 try again.';
+      feedbackTimeout = setTimeout(() => {
+        refreshBtn.textContent = 'Refresh';
+        refreshBtn.disabled = false;
+      }, 3000);
+    }
+  });
+
+  refreshSection.appendChild(refreshLabel);
+  refreshSection.appendChild(refreshBtn);
+  screen.appendChild(refreshSection);
+}
 
 init();
