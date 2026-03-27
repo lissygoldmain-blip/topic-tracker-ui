@@ -1,1 +1,263 @@
-/* styles will be added in Task 3 */
+/* ─── Custom properties ─────────────────────────────────────────────────── */
+:root {
+  --bg: #ffffff;
+  --surface: #f7f7f7;
+  --border: #e8e8e8;
+  --text: #1a1a1a;
+  --text-secondary: #6b6b6b;
+  --accent: #0066cc;
+  --escalation: #d97706;
+  --dot-high: #22c55e;
+  --dot-med: #eab308;
+  --tab-h: 56px;
+  --card-radius: 10px;
+  --sheet-radius: 18px;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111111;
+    --surface: #1c1c1c;
+    --border: #2e2e2e;
+    --text: #f0f0f0;
+    --text-secondary: #888888;
+    --accent: #4da3ff;
+    --escalation: #f59e0b;
+  }
+}
+
+/* ─── Reset ─────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+/* ─── App layout ─────────────────────────────────────────────────────────── */
+#app { display: flex; flex-direction: column; height: 100dvh; }
+#screens { flex: 1; overflow-y: auto; }
+.screen { display: none; padding: 16px 16px calc(var(--tab-h) + 16px); min-height: 100%; }
+.screen.active { display: block; }
+
+/* ─── Tab bar ────────────────────────────────────────────────────────────── */
+#tab-bar {
+  display: flex;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: var(--tab-h);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  z-index: 10;
+}
+.tab-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 8px 4px;
+  transition: color 0.15s;
+}
+.tab-btn.active { color: var(--accent); font-weight: 600; }
+
+/* ─── Result card ────────────────────────────────────────────────────────── */
+.result-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.result-card.is-read { opacity: 0.5; }
+.card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.topic-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.novelty-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.novelty-dot.high   { background: var(--dot-high); }
+.novelty-dot.medium { background: var(--dot-med); }
+.escalation-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--escalation);
+}
+.card-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-snippet {
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.card-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* ─── Topic list (Topics screen) ─────────────────────────────────────────── */
+.topic-row {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  border-radius: var(--card-radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+.topic-row-name { font-weight: 600; flex: 1; }
+.topic-row-meta { font-size: 13px; color: var(--text-secondary); }
+.topic-escalation-badge { margin-left: 8px; }
+
+/* ─── Section headings ───────────────────────────────────────────────────── */
+.screen-heading {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 12px;
+}
+
+/* ─── Empty state ────────────────────────────────────────────────────────── */
+.empty-state {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 48px 0;
+  font-size: 15px;
+}
+
+/* ─── Error state ────────────────────────────────────────────────────────── */
+.error-state {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 48px 16px;
+}
+.error-state button {
+  margin-top: 16px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+/* ─── Detail sheet ────────────────────────────────────────────────────────── */
+.detail-sheet { position: fixed; inset: 0; z-index: 100; }
+.detail-sheet.hidden { display: none; }
+.detail-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.4);
+}
+.detail-panel {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  background: var(--bg);
+  border-radius: var(--sheet-radius) var(--sheet-radius) 0 0;
+  padding: 20px 20px 40px;
+  max-height: 90dvh;
+  overflow-y: auto;
+}
+@media (min-width: 600px) {
+  .detail-panel {
+    bottom: auto; top: 50%; left: 50%; right: auto;
+    transform: translate(-50%, -50%);
+    width: 560px;
+    max-height: 80vh;
+    border-radius: var(--sheet-radius);
+  }
+}
+.detail-close {
+  position: absolute; top: 16px; right: 16px;
+  background: none; border: none;
+  font-size: 22px; cursor: pointer;
+  color: var(--text-secondary);
+  line-height: 1;
+}
+.detail-title { font-size: 19px; font-weight: 700; margin: 0 32px 8px 0; }
+.detail-meta { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; }
+.detail-summary { font-size: 15px; line-height: 1.6; margin-bottom: 16px; }
+.tags-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.tag-pill {
+  font-size: 12px; font-weight: 600;
+  padding: 3px 10px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.detail-score { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
+.detail-price { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+.detail-escalation {
+  display: inline-block;
+  font-size: 13px; font-weight: 600;
+  color: var(--escalation);
+  background: #fef3c7;
+  padding: 6px 12px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+.open-btn {
+  display: block; width: 100%;
+  padding: 13px;
+  background: var(--accent);
+  color: white;
+  font-size: 15px; font-weight: 600;
+  border: none; border-radius: 10px;
+  cursor: pointer;
+  margin-top: 8px;
+  text-align: center;
+  text-decoration: none;
+}
+
+/* ─── Settings screen ────────────────────────────────────────────────────── */
+.settings-section { margin-bottom: 24px; }
+.settings-label { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.04em; }
+.settings-value { font-size: 15px; }
+.refresh-btn {
+  padding: 11px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px; font-weight: 500;
+  cursor: pointer;
+  color: var(--text);
+  min-width: 120px;
+}
+.refresh-btn:disabled { opacity: 0.5; cursor: default; }
