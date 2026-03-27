@@ -179,7 +179,8 @@ function openDetail(result) {
   document.body.style.overflow = 'hidden';
 
   // Re-render active screen to show updated read state
-  renderActiveScreen(document.querySelector('.tab-btn.active').dataset.tab);
+  const activeBtn = document.querySelector('.tab-btn.active');
+  if (activeBtn) renderActiveScreen(activeBtn.dataset.tab);
 }
 
 function closeDetail() {
