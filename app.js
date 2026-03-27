@@ -208,7 +208,36 @@ function errorState(onRetry) {
 }
 
 // ── Stub render functions (filled in Tasks 6–8) ───────────────────────────
-function renderHighlights() {}
+function renderHighlights() {
+  const screen = document.getElementById('screen-highlights');
+  screen.innerHTML = '';
+
+  const heading = document.createElement('h1');
+  heading.className = 'screen-heading';
+  heading.textContent = 'Highlights';
+  screen.appendChild(heading);
+
+  if (loadError) {
+    screen.appendChild(errorState(() => { loadData().then(() => renderHighlights()); }));
+    return;
+  }
+
+  const all = flatResults(index);
+  const highlights = computeHighlights(all);
+  const sorted = sortResults(highlights, readSet);
+
+  if (sorted.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = 'Nothing new to highlight.';
+    screen.appendChild(empty);
+    return;
+  }
+
+  sorted.forEach(result => {
+    screen.appendChild(renderCard(result, { showTopicPill: true, showNoveltyDot: true }));
+  });
+}
 function renderTopicList() {}
 function renderSettings() {}
 
