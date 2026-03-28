@@ -76,6 +76,29 @@ export function topicBg(name) {
   return `hsl(${hue}, 40%, 92%)`;
 }
 
+// ── Preferences (date filter, hide-read) ─────────────────────────────────
+
+export function loadPrefs() {
+  return {
+    hideRead: JSON.parse(localStorage.getItem('tracker_hide_read') || 'false'),
+    dateFilter: localStorage.getItem('tracker_date_filter') || '7d',
+  };
+}
+
+export function savePrefs(prefs) {
+  localStorage.setItem('tracker_hide_read', JSON.stringify(prefs.hideRead));
+  localStorage.setItem('tracker_date_filter', prefs.dateFilter);
+}
+
+// ── Date range filter ─────────────────────────────────────────────────────
+
+export function filterByAge(results, key) {
+  const days = { '24h': 1, '7d': 7, 'all': null }[key] ?? 7;
+  if (days === null) return results;
+  const cutoff = Date.now() - days * 86_400_000;
+  return results.filter(r => r.fetched_at && new Date(r.fetched_at).getTime() >= cutoff);
+}
+
 // ── Last fetched ─────────────────────────────────────────────────────────
 
 export function computeLastFetched(index) {

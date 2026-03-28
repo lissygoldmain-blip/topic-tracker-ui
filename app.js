@@ -4,6 +4,7 @@ import {
   computeHighlights, sortResults,
   formatRelativeTime, formatAbsoluteTime,
   topicColor, topicBg, computeLastFetched, flatResults,
+  loadPrefs, savePrefs, filterByAge,
 } from './data.js';
 
 // ── App state ────────────────────────────────────────────────────────────
@@ -11,6 +12,22 @@ let index = {};       // { topicName: [result, ...] }
 let readSet = new Set();
 let loadError = false;
 let topicsSubView = null; // null = topic list; string = topic name being viewed
+let prefs = loadPrefs();  // { hideRead, dateFilter }
+
+// ── Tab badge ─────────────────────────────────────────────────────────────
+
+function updateTabBadge() {
+  const btn = document.querySelector('.tab-btn[data-tab="highlights"]');
+  if (!btn) return;
+  const all = flatResults(index);
+  const highlights = computeHighlights(all);
+  const unread = highlights.filter(r => !readSet.has(r.url)).length;
+  if (unread > 0) {
+    btn.innerHTML = `Highlights <span class="tab-badge">${unread}</span>`;
+  } else {
+    btn.textContent = 'Highlights';
+  }
+}
 
 // ── Tab switching ────────────────────────────────────────────────────────
 const tabBtns = document.querySelectorAll('.tab-btn');
@@ -39,6 +56,7 @@ function renderActiveScreen(tabName) {
 async function init() {
   readSet = loadReadSet();
   await loadData();
+  updateTabBadge();
   switchTab('highlights');
 }
 
@@ -51,6 +69,7 @@ async function loadData() {
     loadError = true;
     index = {};
   }
+  updateTabBadge();
 }
 
 // ── Result card ───────────────────────────────────────────────────────────
@@ -83,6 +102,10 @@ function renderCard(result, { showTopicPill = true, showNoveltyDot = false } = {
     const dot = document.createElement('span');
     dot.className = 'novelty-dot ' + (result.novelty_score >= 0.9 ? 'high' : 'medium');
     header.appendChild(dot);
+    const scoreText = document.createElement('span');
+    scoreText.className = 'novelty-score-text';
+    scoreText.textContent = result.novelty_score.toFixed(2);
+    header.appendChild(scoreText);
   }
 
   const title = document.createElement('div');
@@ -116,6 +139,7 @@ const detailBackdrop = document.getElementById('detail-backdrop');
 
 function openDetail(result) {
   markRead(readSet, result.url);
+  updateTabBadge();
 
   const fetchedDate = new Date(result.fetched_at);
 
@@ -223,14 +247,49 @@ function renderHighlights() {
     return;
   }
 
+  // ── Toolbar: date filter + hide-read toggle ───────────────────────────
+  const toolbar = document.createElement('div');
+  toolbar.className = 'highlights-toolbar';
+
+  const seg = document.createElement('div');
+  seg.className = 'filter-seg';
+  ['24h', '7d', 'all'].forEach(key => {
+    const btn = document.createElement('button');
+    btn.textContent = key === 'all' ? 'All' : key;
+    btn.classList.toggle('active', prefs.dateFilter === key);
+    btn.addEventListener('click', () => {
+      prefs.dateFilter = key;
+      savePrefs(prefs);
+      renderHighlights();
+    });
+    seg.appendChild(btn);
+  });
+  toolbar.appendChild(seg);
+
+  const toggle = document.createElement('button');
+  toggle.className = 'toggle-btn' + (prefs.hideRead ? ' active' : '');
+  toggle.textContent = prefs.hideRead ? 'Show read' : 'Hide read';
+  toggle.addEventListener('click', () => {
+    prefs.hideRead = !prefs.hideRead;
+    savePrefs(prefs);
+    renderHighlights();
+  });
+  toolbar.appendChild(toggle);
+  screen.appendChild(toolbar);
+
+  // ── Results ───────────────────────────────────────────────────────────
   const all = flatResults(index);
-  const highlights = computeHighlights(all);
-  const sorted = sortResults(highlights, readSet);
+  let highlights = computeHighlights(all);
+  highlights = filterByAge(highlights, prefs.dateFilter);
+  let sorted = sortResults(highlights, readSet);
+  if (prefs.hideRead) sorted = sorted.filter(r => !readSet.has(r.url));
 
   if (sorted.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
-    empty.textContent = 'Nothing new to highlight.';
+    empty.textContent = prefs.hideRead
+      ? 'No unread highlights. Toggle "Show read" to see everything.'
+      : 'Nothing new to highlight.';
     screen.appendChild(empty);
     return;
   }
@@ -275,9 +334,14 @@ function renderTopicList() {
     nameEl.className = 'topic-row-name';
     nameEl.textContent = name;
 
+    const unreadCount = results.filter(r => !readSet.has(r.url)).length;
     const meta = document.createElement('span');
     meta.className = 'topic-row-meta';
-    meta.textContent = `${results.length} result${results.length !== 1 ? 's' : ''}`;
+    if (unreadCount > 0) {
+      meta.innerHTML = `<span class="topic-unread">${unreadCount} new</span> · ${results.length} total`;
+    } else {
+      meta.textContent = `${results.length} result${results.length !== 1 ? 's' : ''}`;
+    }
 
     row.appendChild(nameEl);
     row.appendChild(meta);
