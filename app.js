@@ -185,9 +185,18 @@ function renderCard(result, { showTopicPill = true, showNoveltyDot = false } = {
     header.appendChild(scoreText);
   }
 
-  const title = document.createElement('div');
+  const title = document.createElement('a');
   title.className = 'card-title';
   title.textContent = result.title;
+  title.href = result.url;
+  title.target = '_blank';
+  title.rel = 'noopener noreferrer';
+  title.addEventListener('click', e => {
+    e.stopPropagation();
+    markRead(readSet, result.url);
+    updateTabBadge();
+    div.classList.add('is-read');
+  });
 
   const snippet = document.createElement('div');
   snippet.className = 'card-snippet';
@@ -543,10 +552,26 @@ function renderTopicResults(topicName) {
   backBtn.addEventListener('click', renderTopicList);
   screen.appendChild(backBtn);
 
+  const topHeadRow = document.createElement('div');
+  topHeadRow.style.cssText = 'display:flex; align-items:baseline; justify-content:space-between; margin-bottom:16px;';
+
   const heading = document.createElement('h1');
   heading.className = 'screen-heading';
+  heading.style.marginBottom = '0';
   heading.textContent = topicName;
-  screen.appendChild(heading);
+
+  const markAllTopicBtn = document.createElement('button');
+  markAllTopicBtn.className = 'toggle-btn';
+  markAllTopicBtn.textContent = 'Mark all read';
+  markAllTopicBtn.addEventListener('click', () => {
+    (index[topicName] || []).forEach(r => markRead(readSet, r.url));
+    updateTabBadge();
+    renderTopicResults(topicName);
+  });
+
+  topHeadRow.appendChild(heading);
+  topHeadRow.appendChild(markAllTopicBtn);
+  screen.appendChild(topHeadRow);
 
   const results = index[topicName] || [];
 

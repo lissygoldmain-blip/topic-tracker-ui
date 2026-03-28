@@ -113,7 +113,10 @@ body {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  color: var(--text);
+  text-decoration: none;
 }
+.card-title:hover { text-decoration: underline; }
 .card-snippet {
   font-size: 13px;
   color: var(--text-secondary);
