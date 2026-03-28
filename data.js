@@ -101,7 +101,16 @@ export function filterByAge(results, key) {
   const days = { '24h': 1, '7d': 7, 'all': null }[key] ?? 7;
   if (days === null) return results;
   const cutoff = Date.now() - days * 86_400_000;
-  return results.filter(r => r.fetched_at && new Date(r.fetched_at).getTime() >= cutoff);
+  // Prefer published_at (actual article date) over fetched_at (when poller ran)
+  return results.filter(r => {
+    const dateStr = r.published_at || r.fetched_at;
+    return dateStr && new Date(dateStr).getTime() >= cutoff;
+  });
+}
+
+// Returns the best display date for a result (published > fetched)
+export function resultDate(r) {
+  return new Date(r.published_at || r.fetched_at);
 }
 
 // ── Last fetched ─────────────────────────────────────────────────────────

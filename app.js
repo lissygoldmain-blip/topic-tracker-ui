@@ -4,7 +4,7 @@ import {
   computeHighlights, sortResults,
   formatRelativeTime, formatAbsoluteTime,
   topicColor, topicBg, computeLastFetched, flatResults,
-  loadPrefs, savePrefs, filterByAge,
+  loadPrefs, savePrefs, filterByAge, resultDate,
   loadFeedback, upsertFeedback, removeFeedback,
   loadGhPat, saveGhPat, loadGhRepo, saveGhRepo, syncFeedbackToGitHub,
 } from './data.js';
@@ -204,8 +204,7 @@ function renderCard(result, { showTopicPill = true, showNoveltyDot = false } = {
 
   const meta = document.createElement('div');
   meta.className = 'card-meta';
-  const fetchedDate = new Date(result.fetched_at);
-  meta.textContent = `${result.source} \u00b7 ${formatRelativeTime(fetchedDate)}`;
+  meta.textContent = `${result.source} \u00b7 ${formatRelativeTime(resultDate(result))}`;
 
   div.appendChild(header);
   div.appendChild(title);
@@ -242,8 +241,6 @@ function openDetail(result) {
   markRead(readSet, result.url);
   updateTabBadge();
 
-  const fetchedDate = new Date(result.fetched_at);
-
   detailContent.textContent = '';
 
   const title = document.createElement('h2');
@@ -252,7 +249,7 @@ function openDetail(result) {
 
   const meta = document.createElement('div');
   meta.className = 'detail-meta';
-  meta.textContent = `${result.source} \u00b7 ${formatAbsoluteTime(fetchedDate)}`;
+  meta.textContent = `${result.source} \u00b7 ${formatAbsoluteTime(resultDate(result))}`;
 
   const summary = document.createElement('p');
   summary.className = 'detail-summary';
