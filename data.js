@@ -17,6 +17,11 @@ export function markRead(readSet, url) {
   localStorage.setItem(READ_KEY, JSON.stringify([...readSet]));
 }
 
+export function markUnread(readSet, url) {
+  readSet.delete(url);
+  localStorage.setItem(READ_KEY, JSON.stringify([...readSet]));
+}
+
 // ── Data fetching ────────────────────────────────────────────────────────
 
 export async function fetchIndex() {

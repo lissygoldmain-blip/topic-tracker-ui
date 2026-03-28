@@ -1,6 +1,6 @@
 // app.js
 import {
-  fetchIndex, loadReadSet, markRead,
+  fetchIndex, loadReadSet, markRead, markUnread,
   computeHighlights, sortResults,
   formatRelativeTime, formatAbsoluteTime,
   topicColor, topicBg, computeLastFetched, flatResults,
@@ -11,8 +11,10 @@ import {
 let index = {};       // { topicName: [result, ...] }
 let readSet = new Set();
 let loadError = false;
+let isLoading = true;
 let topicsSubView = null; // null = topic list; string = topic name being viewed
 let prefs = loadPrefs();  // { hideRead, dateFilter }
+let _preFocusEl = null;
 
 // ── Tab badge ─────────────────────────────────────────────────────────────
 
@@ -22,10 +24,13 @@ function updateTabBadge() {
   const all = flatResults(index);
   const highlights = computeHighlights(all);
   const unread = highlights.filter(r => !readSet.has(r.url)).length;
+  btn.textContent = '';
+  btn.appendChild(document.createTextNode('Highlights'));
   if (unread > 0) {
-    btn.innerHTML = `Highlights <span class="tab-badge">${unread}</span>`;
-  } else {
-    btn.textContent = 'Highlights';
+    const badge = document.createElement('span');
+    badge.className = 'tab-badge';
+    badge.textContent = String(unread);
+    btn.appendChild(badge);
   }
 }
 
@@ -55,9 +60,10 @@ function renderActiveScreen(tabName) {
 // ── Bootstrap ────────────────────────────────────────────────────────────
 async function init() {
   readSet = loadReadSet();
+  switchTab('highlights'); // shows skeleton immediately while isLoading=true
   await loadData();
-  updateTabBadge();
-  switchTab('highlights');
+  const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab ?? 'highlights';
+  renderActiveScreen(activeTab);
 }
 
 async function loadData() {
@@ -69,7 +75,24 @@ async function loadData() {
     loadError = true;
     index = {};
   }
+  isLoading = false;
   updateTabBadge();
+}
+
+// ── Skeleton loader ───────────────────────────────────────────────────────
+
+function renderSkeletons(container, count = 5) {
+  const lineClasses = ['pill', 'title', 'snippet', 'snippet-2', 'meta'];
+  for (let i = 0; i < count; i++) {
+    const card = document.createElement('div');
+    card.className = 'skeleton-card';
+    lineClasses.forEach(cls => {
+      const line = document.createElement('div');
+      line.className = `skeleton-line ${cls}`;
+      card.appendChild(line);
+    });
+    container.appendChild(card);
+  }
 }
 
 // ── Result card ───────────────────────────────────────────────────────────
@@ -94,7 +117,7 @@ function renderCard(result, { showTopicPill = true, showNoveltyDot = false } = {
   if (result.escalation_trigger) {
     const badge = document.createElement('span');
     badge.className = 'escalation-badge';
-    badge.textContent = `⚡ ${result.escalation_trigger}`;
+    badge.textContent = `\u26a1 ${result.escalation_trigger}`;
     header.appendChild(badge);
   }
 
@@ -119,7 +142,7 @@ function renderCard(result, { showTopicPill = true, showNoveltyDot = false } = {
   const meta = document.createElement('div');
   meta.className = 'card-meta';
   const fetchedDate = new Date(result.fetched_at);
-  meta.textContent = `${result.source} · ${formatRelativeTime(fetchedDate)}`;
+  meta.textContent = `${result.source} \u00b7 ${formatRelativeTime(fetchedDate)}`;
 
   div.appendChild(header);
   div.appendChild(title);
@@ -132,10 +155,24 @@ function renderCard(result, { showTopicPill = true, showNoveltyDot = false } = {
 
 // ── Detail sheet ─────────────────────────────────────────────────────────
 
-const detailSheet   = document.getElementById('detail-sheet');
-const detailClose   = document.getElementById('detail-close');
-const detailContent = document.getElementById('detail-content');
+const detailSheet    = document.getElementById('detail-sheet');
+const detailClose    = document.getElementById('detail-close');
+const detailContent  = document.getElementById('detail-content');
 const detailBackdrop = document.getElementById('detail-backdrop');
+
+function _trapFocusHandler(e) {
+  if (e.key !== 'Tab') return;
+  const panel = document.getElementById('detail-panel');
+  const focusable = [...panel.querySelectorAll('button, [href], [tabindex]:not([tabindex="-1"])')];
+  if (focusable.length < 2) return;
+  const first = focusable[0];
+  const last  = focusable[focusable.length - 1];
+  if (e.shiftKey) {
+    if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+  } else {
+    if (document.activeElement === last)  { e.preventDefault(); first.focus(); }
+  }
+}
 
 function openDetail(result) {
   markRead(readSet, result.url);
@@ -143,7 +180,7 @@ function openDetail(result) {
 
   const fetchedDate = new Date(result.fetched_at);
 
-  detailContent.innerHTML = '';
+  detailContent.textContent = '';
 
   const title = document.createElement('h2');
   title.className = 'detail-title';
@@ -151,7 +188,7 @@ function openDetail(result) {
 
   const meta = document.createElement('div');
   meta.className = 'detail-meta';
-  meta.textContent = `${result.source} · ${formatAbsoluteTime(fetchedDate)}`;
+  meta.textContent = `${result.source} \u00b7 ${formatAbsoluteTime(fetchedDate)}`;
 
   const summary = document.createElement('p');
   summary.className = 'detail-summary';
@@ -175,7 +212,7 @@ function openDetail(result) {
 
   const score = document.createElement('div');
   score.className = 'detail-score';
-  score.textContent = `Novelty: ${result.novelty_score ?? '—'}`;
+  score.textContent = `Novelty: ${result.novelty_score ?? '\u2014'}`;
   detailContent.appendChild(score);
 
   if (result.price) {
@@ -188,7 +225,7 @@ function openDetail(result) {
   if (result.escalation_trigger) {
     const esc = document.createElement('div');
     esc.className = 'detail-escalation';
-    esc.textContent = `⚡ ${result.escalation_trigger}`;
+    esc.textContent = `\u26a1 ${result.escalation_trigger}`;
     detailContent.appendChild(esc);
   }
 
@@ -197,11 +234,26 @@ function openDetail(result) {
   openBtn.href = result.url;
   openBtn.target = '_blank';
   openBtn.rel = 'noopener noreferrer';
-  openBtn.textContent = 'Open →';
+  openBtn.textContent = 'Open \u2192';
   detailContent.appendChild(openBtn);
 
+  const unreadBtn = document.createElement('button');
+  unreadBtn.className = 'unread-btn';
+  unreadBtn.textContent = 'Mark unread';
+  unreadBtn.addEventListener('click', () => {
+    markUnread(readSet, result.url);
+    updateTabBadge();
+    closeDetail();
+    const activeBtn = document.querySelector('.tab-btn.active');
+    if (activeBtn) renderActiveScreen(activeBtn.dataset.tab);
+  });
+  detailContent.appendChild(unreadBtn);
+
+  _preFocusEl = document.activeElement;
   detailSheet.classList.remove('hidden');
   document.body.style.overflow = 'hidden';
+  detailClose.focus();
+  document.addEventListener('keydown', _trapFocusHandler);
 
   // Re-render active screen to show updated read state
   const activeBtn = document.querySelector('.tab-btn.active');
@@ -209,8 +261,10 @@ function openDetail(result) {
 }
 
 function closeDetail() {
+  document.removeEventListener('keydown', _trapFocusHandler);
   detailSheet.classList.add('hidden');
   document.body.style.overflow = '';
+  if (_preFocusEl) { _preFocusEl.focus(); _preFocusEl = null; }
 }
 
 detailClose.addEventListener('click', closeDetail);
@@ -223,7 +277,7 @@ function errorState(onRetry) {
   const div = document.createElement('div');
   div.className = 'error-state';
   const p = document.createElement('p');
-  p.textContent = 'Couldn\'t load results.';
+  p.textContent = 'Couldn\u2019t load results.';
   div.appendChild(p);
   const btn = document.createElement('button');
   btn.textContent = 'Retry';
@@ -232,15 +286,20 @@ function errorState(onRetry) {
   return div;
 }
 
-// ── Stub render functions (filled in Tasks 6–8) ───────────────────────────
+// ── Render functions ───────────────────────────────────────────────────────
 function renderHighlights() {
   const screen = document.getElementById('screen-highlights');
-  screen.innerHTML = '';
+  screen.textContent = '';
 
   const heading = document.createElement('h1');
   heading.className = 'screen-heading';
   heading.textContent = 'Highlights';
   screen.appendChild(heading);
+
+  if (isLoading) {
+    renderSkeletons(screen);
+    return;
+  }
 
   if (loadError) {
     screen.appendChild(errorState(() => { loadData().then(() => renderHighlights()); }));
@@ -288,7 +347,7 @@ function renderHighlights() {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
     empty.textContent = prefs.hideRead
-      ? 'No unread highlights. Toggle "Show read" to see everything.'
+      ? 'No unread highlights. Toggle \u201cShow read\u201d to see everything.'
       : 'Nothing new to highlight.';
     screen.appendChild(empty);
     return;
@@ -298,10 +357,11 @@ function renderHighlights() {
     screen.appendChild(renderCard(result, { showTopicPill: true, showNoveltyDot: true }));
   });
 }
+
 function renderTopicList() {
   topicsSubView = null;
   const screen = document.getElementById('screen-topics');
-  screen.innerHTML = '';
+  screen.textContent = '';
 
   const heading = document.createElement('h1');
   heading.className = 'screen-heading';
@@ -335,21 +395,25 @@ function renderTopicList() {
     nameEl.textContent = name;
 
     const unreadCount = results.filter(r => !readSet.has(r.url)).length;
-    const meta = document.createElement('span');
-    meta.className = 'topic-row-meta';
+    const metaEl = document.createElement('span');
+    metaEl.className = 'topic-row-meta';
     if (unreadCount > 0) {
-      meta.innerHTML = `<span class="topic-unread">${unreadCount} new</span> · ${results.length} total`;
+      const unreadSpan = document.createElement('span');
+      unreadSpan.className = 'topic-unread';
+      unreadSpan.textContent = `${unreadCount} new`;
+      metaEl.appendChild(unreadSpan);
+      metaEl.appendChild(document.createTextNode(` \u00b7 ${results.length} total`));
     } else {
-      meta.textContent = `${results.length} result${results.length !== 1 ? 's' : ''}`;
+      metaEl.textContent = `${results.length} result${results.length !== 1 ? 's' : ''}`;
     }
 
     row.appendChild(nameEl);
-    row.appendChild(meta);
+    row.appendChild(metaEl);
 
     if (hasEscalation) {
       const esc = document.createElement('span');
       esc.className = 'escalation-badge topic-escalation-badge';
-      esc.textContent = '⚡';
+      esc.textContent = '\u26a1';
       row.appendChild(esc);
     }
 
@@ -361,11 +425,11 @@ function renderTopicList() {
 function renderTopicResults(topicName) {
   topicsSubView = topicName;
   const screen = document.getElementById('screen-topics');
-  screen.innerHTML = '';
+  screen.textContent = '';
 
   const backBtn = document.createElement('button');
   backBtn.className = 'back-btn';
-  backBtn.textContent = '← Topics';
+  backBtn.textContent = '\u2190 Topics';
   backBtn.addEventListener('click', renderTopicList);
   screen.appendChild(backBtn);
 
@@ -392,7 +456,7 @@ function renderTopicResults(topicName) {
 
 function renderSettings() {
   const screen = document.getElementById('screen-settings');
-  screen.innerHTML = '';
+  screen.textContent = '';
 
   const heading = document.createElement('h1');
   heading.className = 'screen-heading';

@@ -81,6 +81,10 @@ body {
   transition: opacity 0.15s;
 }
 .result-card.is-read { opacity: 0.5; }
+@media (hover: hover) {
+  .result-card:hover { border-color: var(--accent); }
+  .topic-row:hover   { border-color: var(--accent); }
+}
 .card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .topic-pill {
   font-size: 11px;
@@ -300,3 +304,44 @@ body {
   min-width: 120px;
 }
 .refresh-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* ─── Skeleton loader ────────────────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.skeleton-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+.skeleton-line {
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--border) 25%, var(--surface) 50%, var(--border) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+.skeleton-line.pill     { height: 18px; width: 25%; margin-bottom: 8px; border-radius: 999px; }
+.skeleton-line.title    { height: 15px; width: 70%; margin-bottom: 8px; }
+.skeleton-line.snippet  { height: 12px; width: 90%; margin-bottom: 5px; }
+.skeleton-line.snippet-2 { height: 12px; width: 55%; margin-bottom: 8px; }
+.skeleton-line.meta     { height: 11px; width: 30%; }
+
+/* ─── Mark unread button ──────────────────────────────────────────────────── */
+.unread-btn {
+  display: block; width: 100%;
+  padding: 11px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 14px; font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  margin-top: 8px;
+  text-align: center;
+}
+@media (hover: hover) {
+  .unread-btn:hover { border-color: var(--accent); color: var(--accent); }
+}
