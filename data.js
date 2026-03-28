@@ -125,3 +125,67 @@ export function computeLastFetched(index) {
 export function flatResults(index) {
   return Object.values(index).flat();
 }
+
+// ── Feedback (votes + notes) ──────────────────────────────────────────────
+
+const FEEDBACK_KEY = 'tracker_feedback';
+const GH_PAT_KEY   = 'tracker_gh_pat';
+const GH_REPO_KEY  = 'tracker_gh_repo';
+
+export function loadFeedback() {
+  try { return JSON.parse(localStorage.getItem(FEEDBACK_KEY) || '[]'); }
+  catch { return []; }
+}
+
+// Upsert mutates the array in place so callers share the same reference.
+export function upsertFeedback(feedback, item) {
+  const idx = feedback.findIndex(f => f.url === item.url);
+  if (idx >= 0) feedback[idx] = item;
+  else feedback.push(item);
+  localStorage.setItem(FEEDBACK_KEY, JSON.stringify(feedback));
+}
+
+export function removeFeedback(feedback, url) {
+  const idx = feedback.findIndex(f => f.url === url);
+  if (idx >= 0) {
+    feedback.splice(idx, 1);
+    localStorage.setItem(FEEDBACK_KEY, JSON.stringify(feedback));
+  }
+}
+
+export function loadGhPat()       { return localStorage.getItem(GH_PAT_KEY)  || ''; }
+export function saveGhPat(pat)    { localStorage.setItem(GH_PAT_KEY, pat); }
+export function loadGhRepo()      { return localStorage.getItem(GH_REPO_KEY) || 'lissygoldmain-blip/topic-tracker'; }
+export function saveGhRepo(repo)  { localStorage.setItem(GH_REPO_KEY, repo); }
+
+// Writes feedback.json to the tracker repo via the GitHub Contents API.
+// Requires a PAT with Contents:write on that repo.
+export async function syncFeedbackToGitHub(pat, repo) {
+  const feedback = loadFeedback();
+  const json     = JSON.stringify(feedback, null, 2);
+  // UTF-8-safe base64 encoding for GitHub API
+  const bytes    = new TextEncoder().encode(json);
+  const binary   = Array.from(bytes, b => String.fromCharCode(b)).join('');
+  const content  = btoa(binary);
+
+  const apiUrl = `https://api.github.com/repos/${repo}/contents/feedback.json`;
+  const headers = { Authorization: `token ${pat}`, 'Content-Type': 'application/json' };
+
+  // Fetch existing SHA so we can update rather than create
+  let sha;
+  try {
+    const check = await fetch(apiUrl, { headers });
+    if (check.ok) { sha = (await check.json()).sha; }
+  } catch { /* file doesn't exist yet — first sync */ }
+
+  const resp = await fetch(apiUrl, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({
+      message: 'chore: sync feedback',
+      content,
+      ...(sha ? { sha } : {}),
+    }),
+  });
+  return resp.ok;
+}

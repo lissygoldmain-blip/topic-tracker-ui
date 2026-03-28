@@ -5,11 +5,14 @@ import {
   formatRelativeTime, formatAbsoluteTime,
   topicColor, topicBg, computeLastFetched, flatResults,
   loadPrefs, savePrefs, filterByAge,
+  loadFeedback, upsertFeedback, removeFeedback,
+  loadGhPat, saveGhPat, loadGhRepo, saveGhRepo, syncFeedbackToGitHub,
 } from './data.js';
 
 // ── App state ────────────────────────────────────────────────────────────
 let index = {};       // { topicName: [result, ...] }
 let readSet = new Set();
+let feedback = [];    // [{ url, title, topic, vote, note, ts }]
 let loadError = false;
 let isLoading = true;
 let topicsSubView = null; // null = topic list; string = topic name being viewed
@@ -21,9 +24,10 @@ let _preFocusEl = null;
 function updateTabBadge() {
   const btn = document.querySelector('.tab-btn[data-tab="highlights"]');
   if (!btn) return;
-  const all = flatResults(index);
-  const highlights = computeHighlights(all);
-  const unread = highlights.filter(r => !readSet.has(r.url)).length;
+  const all        = flatResults(index);
+  let highlights   = computeHighlights(all);
+  highlights       = filterByAge(highlights, prefs.dateFilter);
+  const unread     = highlights.filter(r => !readSet.has(r.url)).length;
   btn.textContent = '';
   btn.appendChild(document.createTextNode('Highlights'));
   if (unread > 0) {
@@ -59,7 +63,8 @@ function renderActiveScreen(tabName) {
 
 // ── Bootstrap ────────────────────────────────────────────────────────────
 async function init() {
-  readSet = loadReadSet();
+  readSet  = loadReadSet();
+  feedback = loadFeedback();
   switchTab('highlights'); // shows skeleton immediately while isLoading=true
   await loadData();
   const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab ?? 'highlights';
@@ -93,6 +98,55 @@ function renderSkeletons(container, count = 5) {
     });
     container.appendChild(card);
   }
+}
+
+// ── Vote buttons ──────────────────────────────────────────────────────────
+// onVote(newVote) is called after each vote change — used by detail to refresh note field.
+
+function makeVoteButtons(result, { onVote, extraClass = '' } = {}) {
+  const fb          = feedback.find(f => f.url === result.url);
+  const currentVote = fb?.vote ?? 0;
+
+  const row   = document.createElement('div');
+  row.className = 'vote-row' + (extraClass ? ' ' + extraClass : '');
+
+  const upBtn   = document.createElement('button');
+  upBtn.className = 'vote-btn up' + (currentVote === 1  ? ' active' : '');
+  upBtn.textContent = '👍';
+  upBtn.title = 'More like this';
+
+  const downBtn = document.createElement('button');
+  downBtn.className = 'vote-btn down' + (currentVote === -1 ? ' active' : '');
+  downBtn.textContent = '👎';
+  downBtn.title = 'Less like this';
+
+  function handleVote(vote, e) {
+    e.stopPropagation();
+    const existing = feedback.find(f => f.url === result.url);
+    if (existing && existing.vote === vote) {
+      removeFeedback(feedback, result.url);
+    } else {
+      upsertFeedback(feedback, {
+        url:   result.url,
+        title: result.title,
+        topic: result.topic_name,
+        vote,
+        note:  existing?.note || '',
+        ts:    new Date().toISOString(),
+      });
+    }
+    const nowVote = feedback.find(f => f.url === result.url)?.vote ?? 0;
+    upBtn.classList.toggle('active',   nowVote === 1);
+    downBtn.classList.toggle('active', nowVote === -1);
+    if (onVote) onVote(nowVote);
+  }
+
+  upBtn.addEventListener('click',   e => handleVote(1,  e));
+  downBtn.addEventListener('click', e => handleVote(-1, e));
+
+  row.appendChild(upBtn);
+  row.appendChild(downBtn);
+  return row;
 }
 
 // ── Result card ───────────────────────────────────────────────────────────
@@ -148,6 +202,7 @@ function renderCard(result, { showTopicPill = true, showNoveltyDot = false } = {
   div.appendChild(title);
   div.appendChild(snippet);
   div.appendChild(meta);
+  div.appendChild(makeVoteButtons(result));
 
   div.addEventListener('click', () => openDetail(result));
   return div;
@@ -249,6 +304,47 @@ function openDetail(result) {
   });
   detailContent.appendChild(unreadBtn);
 
+  // Vote + note section
+  const voteSection = document.createElement('div');
+  voteSection.style.cssText = 'margin-top:16px; padding-top:12px; border-top:1px solid var(--border)';
+
+  function renderDetailVote() {
+    voteSection.textContent = '';
+
+    const voteRow = makeVoteButtons(result, {
+      onVote: renderDetailVote,
+      extraClass: 'detail-vote-row',
+    });
+    voteSection.appendChild(voteRow);
+
+    const fb = feedback.find(f => f.url === result.url);
+    if (fb) {
+      const textarea = document.createElement('textarea');
+      textarea.className  = 'vote-note-input';
+      textarea.placeholder = 'Why? (optional) — e.g. "general news yes, not granular updates"';
+      textarea.value      = fb.note || '';
+
+      const savedMsg = document.createElement('div');
+      savedMsg.className = 'vote-note-saved';
+
+      let saveTimeout;
+      textarea.addEventListener('input', () => {
+        clearTimeout(saveTimeout);
+        savedMsg.textContent = '';
+        saveTimeout = setTimeout(() => {
+          upsertFeedback(feedback, { ...fb, note: textarea.value });
+          savedMsg.textContent = 'Saved';
+          setTimeout(() => { savedMsg.textContent = ''; }, 1500);
+        }, 500);
+      });
+
+      voteSection.appendChild(textarea);
+      voteSection.appendChild(savedMsg);
+    }
+  }
+  renderDetailVote();
+  detailContent.appendChild(voteSection);
+
   _preFocusEl = document.activeElement;
   detailSheet.classList.remove('hidden');
   document.body.style.overflow = 'hidden';
@@ -334,6 +430,20 @@ function renderHighlights() {
     renderHighlights();
   });
   toolbar.appendChild(toggle);
+
+  const markAllBtn = document.createElement('button');
+  markAllBtn.className = 'toggle-btn';
+  markAllBtn.textContent = 'Mark all read';
+  markAllBtn.style.marginLeft = '4px';
+  markAllBtn.addEventListener('click', () => {
+    const all      = flatResults(index);
+    let highlights = computeHighlights(all);
+    highlights     = filterByAge(highlights, prefs.dateFilter);
+    highlights.forEach(r => markRead(readSet, r.url));
+    updateTabBadge();
+    renderHighlights();
+  });
+  toolbar.appendChild(markAllBtn);
   screen.appendChild(toolbar);
 
   // ── Results ───────────────────────────────────────────────────────────
@@ -515,6 +625,61 @@ function renderSettings() {
   refreshSection.appendChild(refreshLabel);
   refreshSection.appendChild(refreshBtn);
   screen.appendChild(refreshSection);
+
+  // ── Feedback sync ──────────────────────────────────────────────────────
+  const syncSection = document.createElement('div');
+  syncSection.className = 'settings-section';
+
+  const syncLabel = document.createElement('div');
+  syncLabel.className = 'settings-label';
+  syncLabel.textContent = 'Feedback sync';
+  syncSection.appendChild(syncLabel);
+
+  const fbCount = document.createElement('div');
+  fbCount.className = 'settings-value';
+  fbCount.textContent = `${feedback.length} vote${feedback.length !== 1 ? 's' : ''} stored locally`;
+  fbCount.style.marginBottom = '10px';
+  syncSection.appendChild(fbCount);
+
+  const repoInput = document.createElement('input');
+  repoInput.type        = 'text';
+  repoInput.className   = 'settings-input';
+  repoInput.placeholder = 'owner/repo (e.g. lissygoldmain-blip/topic-tracker)';
+  repoInput.value       = loadGhRepo();
+  syncSection.appendChild(repoInput);
+
+  const patInput = document.createElement('input');
+  patInput.type        = 'password';
+  patInput.className   = 'settings-input';
+  patInput.placeholder = 'GitHub PAT (Contents:write on tracker repo)';
+  patInput.value       = loadGhPat();
+  syncSection.appendChild(patInput);
+
+  const syncStatus = document.createElement('div');
+  syncStatus.className = 'settings-status';
+
+  const syncBtn = document.createElement('button');
+  syncBtn.className   = 'settings-btn';
+  syncBtn.textContent = `Sync ${feedback.length} item${feedback.length !== 1 ? 's' : ''} to GitHub`;
+
+  syncBtn.addEventListener('click', async () => {
+    const pat  = patInput.value.trim();
+    const repo = repoInput.value.trim();
+    if (!pat || !repo) { syncStatus.textContent = 'Enter a PAT and repo first.'; return; }
+    saveGhPat(pat);
+    saveGhRepo(repo);
+    syncBtn.disabled    = true;
+    syncBtn.textContent = 'Syncing…';
+    syncStatus.textContent = '';
+    const ok = await syncFeedbackToGitHub(pat, repo);
+    syncBtn.disabled    = false;
+    syncBtn.textContent = `Sync ${feedback.length} item${feedback.length !== 1 ? 's' : ''} to GitHub`;
+    syncStatus.textContent = ok ? '✓ Synced — pipeline will use feedback on next run.' : '✗ Sync failed — check PAT and repo name.';
+  });
+
+  syncSection.appendChild(syncBtn);
+  syncSection.appendChild(syncStatus);
+  screen.appendChild(syncSection);
 }
 
 init();
