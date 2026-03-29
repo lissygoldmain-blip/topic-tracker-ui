@@ -552,9 +552,33 @@ function renderTopicList() {
     return;
   }
 
+  // Date filter toolbar (mirrors Highlights)
+  const toolbar = document.createElement('div');
+  toolbar.className = 'highlights-toolbar';
+  const seg = document.createElement('div');
+  seg.className = 'filter-seg';
+  ['24h', '7d', 'all'].forEach(key => {
+    const btn = document.createElement('button');
+    btn.textContent = key === 'all' ? 'All' : key;
+    btn.classList.toggle('active', prefs.dateFilter === key);
+    btn.addEventListener('click', () => {
+      prefs.dateFilter = key;
+      savePrefs(prefs);
+      renderTopicList();
+    });
+    seg.appendChild(btn);
+  });
+  toolbar.appendChild(seg);
+  screen.appendChild(toolbar);
+
   screen.appendChild(makeSearchBar(() => renderTopicList()));
 
-  let topicNames = Object.keys(index);
+  // Sort topics by unread count descending so active ones float to the top
+  let topicNames = Object.keys(index).sort((a, b) => {
+    const unreadA = filterByAge(index[a] || [], prefs.dateFilter).filter(r => !readSet.has(r.url)).length;
+    const unreadB = filterByAge(index[b] || [], prefs.dateFilter).filter(r => !readSet.has(r.url)).length;
+    return unreadB - unreadA;
+  });
 
   if (topicNames.length === 0) {
     const empty = document.createElement('div');
@@ -580,7 +604,8 @@ function renderTopicList() {
 
   topicNames.forEach(name => {
     const results = index[name] || [];
-    const hasEscalation = results.some(r => r.escalation_trigger !== null);
+    const filtered = filterByAge(results, prefs.dateFilter);
+    const hasEscalation = filtered.some(r => r.escalation_trigger !== null);
 
     const row = document.createElement('div');
     row.className = 'topic-row';
@@ -589,7 +614,7 @@ function renderTopicList() {
     nameEl.className = 'topic-row-name';
     nameEl.textContent = name;
 
-    const unreadCount = results.filter(r => !readSet.has(r.url)).length;
+    const unreadCount = filtered.filter(r => !readSet.has(r.url)).length;
     const metaEl = document.createElement('span');
     metaEl.className = 'topic-row-meta';
     if (unreadCount > 0) {
@@ -597,9 +622,9 @@ function renderTopicList() {
       unreadSpan.className = 'topic-unread';
       unreadSpan.textContent = `${unreadCount} new`;
       metaEl.appendChild(unreadSpan);
-      metaEl.appendChild(document.createTextNode(` \u00b7 ${results.length} total`));
+      metaEl.appendChild(document.createTextNode(` \u00b7 ${filtered.length} total`));
     } else {
-      metaEl.textContent = `${results.length} result${results.length !== 1 ? 's' : ''}`;
+      metaEl.textContent = `${filtered.length} result${filtered.length !== 1 ? 's' : ''}`;
     }
 
     row.appendChild(nameEl);
@@ -651,7 +676,7 @@ function renderTopicResults(topicName) {
 
   screen.appendChild(makeSearchBar(() => renderTopicResults(topicName)));
 
-  const results = index[topicName] || [];
+  const results = filterByAge(index[topicName] || [], prefs.dateFilter);
   let sorted = sortResults(results, readSet);
   if (searchQuery) sorted = sorted.filter(r => matchesSearch(r, searchQuery));
 
