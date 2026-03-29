@@ -18,6 +18,7 @@ let isLoading = true;
 let topicsSubView = null; // null = topic list; string = topic name being viewed
 let prefs = loadPrefs();  // { hideRead, dateFilter }
 let _preFocusEl = null;
+let searchQuery = '';     // shared search query across screens
 
 // ── Tab badge ─────────────────────────────────────────────────────────────
 
@@ -82,6 +83,62 @@ async function loadData() {
   }
   isLoading = false;
   updateTabBadge();
+}
+
+// ── Search ────────────────────────────────────────────────────────────────
+
+function matchesSearch(result, query) {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  return (
+    result.title.toLowerCase().includes(q) ||
+    (result.snippet || '').toLowerCase().includes(q) ||
+    result.source.toLowerCase().includes(q) ||
+    result.topic_name.toLowerCase().includes(q)
+  );
+}
+
+function makeSearchBar(onSearch) {
+  const bar = document.createElement('div');
+  bar.className = 'search-bar';
+
+  const icon = document.createElement('span');
+  icon.textContent = '🔍';
+  icon.style.fontSize = '14px';
+
+  const input = document.createElement('input');
+  input.type = 'search';
+  input.placeholder = 'Search…';
+  input.value = searchQuery;
+  input.setAttribute('aria-label', 'Search results');
+
+  const clear = document.createElement('button');
+  clear.className = 'search-clear' + (searchQuery ? ' visible' : '');
+  clear.textContent = '✕';
+  clear.setAttribute('aria-label', 'Clear search');
+
+  let debounce;
+  input.addEventListener('input', () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      searchQuery = input.value.trim();
+      clear.classList.toggle('visible', searchQuery.length > 0);
+      onSearch(searchQuery);
+    }, 150);
+  });
+
+  clear.addEventListener('click', () => {
+    input.value = '';
+    searchQuery = '';
+    clear.classList.remove('visible');
+    input.focus();
+    onSearch('');
+  });
+
+  bar.appendChild(icon);
+  bar.appendChild(input);
+  bar.appendChild(clear);
+  return bar;
 }
 
 // ── Skeleton loader ───────────────────────────────────────────────────────
@@ -452,19 +509,25 @@ function renderHighlights() {
   toolbar.appendChild(markAllBtn);
   screen.appendChild(toolbar);
 
+  // ── Search bar ────────────────────────────────────────────────────────
+  screen.appendChild(makeSearchBar(() => renderHighlights()));
+
   // ── Results ───────────────────────────────────────────────────────────
   const all = flatResults(index);
   let highlights = computeHighlights(all);
   highlights = filterByAge(highlights, prefs.dateFilter);
   let sorted = sortResults(highlights, readSet);
   if (prefs.hideRead) sorted = sorted.filter(r => !readSet.has(r.url));
+  if (searchQuery) sorted = sorted.filter(r => matchesSearch(r, searchQuery));
 
   if (sorted.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
-    empty.textContent = prefs.hideRead
-      ? 'No unread highlights. Toggle \u201cShow read\u201d to see everything.'
-      : 'Nothing new to highlight.';
+    empty.textContent = searchQuery
+      ? `No results matching "${searchQuery}".`
+      : prefs.hideRead
+        ? 'No unread highlights. Toggle \u201cShow read\u201d to see everything.'
+        : 'Nothing new to highlight.';
     screen.appendChild(empty);
     return;
   }
@@ -489,7 +552,9 @@ function renderTopicList() {
     return;
   }
 
-  const topicNames = Object.keys(index);
+  screen.appendChild(makeSearchBar(() => renderTopicList()));
+
+  let topicNames = Object.keys(index);
 
   if (topicNames.length === 0) {
     const empty = document.createElement('div');
@@ -497,6 +562,20 @@ function renderTopicList() {
     empty.textContent = 'No topics yet.';
     screen.appendChild(empty);
     return;
+  }
+
+  // When searching, filter to topics that have matching results
+  if (searchQuery) {
+    topicNames = topicNames.filter(name =>
+      (index[name] || []).some(r => matchesSearch(r, searchQuery))
+    );
+    if (topicNames.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = `No results matching "${searchQuery}".`;
+      screen.appendChild(empty);
+      return;
+    }
   }
 
   topicNames.forEach(name => {
@@ -570,17 +649,22 @@ function renderTopicResults(topicName) {
   topHeadRow.appendChild(markAllTopicBtn);
   screen.appendChild(topHeadRow);
 
-  const results = index[topicName] || [];
+  screen.appendChild(makeSearchBar(() => renderTopicResults(topicName)));
 
-  if (results.length === 0) {
+  const results = index[topicName] || [];
+  let sorted = sortResults(results, readSet);
+  if (searchQuery) sorted = sorted.filter(r => matchesSearch(r, searchQuery));
+
+  if (sorted.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
-    empty.textContent = 'No results yet for this topic.';
+    empty.textContent = searchQuery
+      ? `No results matching "${searchQuery}".`
+      : 'No results yet for this topic.';
     screen.appendChild(empty);
     return;
   }
 
-  const sorted = sortResults(results, readSet);
   sorted.forEach(result => {
     screen.appendChild(renderCard(result, { showTopicPill: false, showNoveltyDot: false }));
   });

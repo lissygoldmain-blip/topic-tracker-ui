@@ -392,6 +392,44 @@ body {
   font-size: 11px; color: var(--text-secondary); margin-top: 4px;
 }
 
+/* ─── Desktop max-width ─────────────────────────────────────────────────────  */
+@media (min-width: 680px) {
+  .screen { max-width: 680px; margin: 0 auto; }
+}
+
+/* ─── Search bar ─────────────────────────────────────────────────────────── */
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+}
+.search-bar input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  font-size: 15px;
+  color: var(--text);
+  font-family: inherit;
+}
+.search-bar input::placeholder { color: var(--text-secondary); }
+.search-clear {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 16px;
+  padding: 0;
+  line-height: 1;
+  display: none;
+}
+.search-clear.visible { display: block; }
+
 /* ─── Settings: PAT / sync ────────────────────────────────────────────────── */
 .settings-input {
   display: block; width: 100%;
