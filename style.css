@@ -274,8 +274,9 @@ body {
 }
 .filter-seg button {
   background: none; border: none; cursor: pointer;
-  font-size: 12px; font-weight: 500; padding: 4px 10px;
+  font-size: 12px; font-weight: 500; padding: 6px 12px;  /* was 4px 10px */
   border-radius: 6px; color: var(--text-secondary); transition: color 0.1s;
+  min-height: 32px;
 }
 .filter-seg button.active { background: var(--bg); color: var(--accent); font-weight: 600; }
 .toggle-btn {
@@ -351,17 +352,18 @@ body {
 
 /* ─── Vote buttons ────────────────────────────────────────────────────────── */
 .vote-row {
-  display: flex; align-items: center; gap: 4px; margin-top: 8px;
+  display: flex; align-items: center; gap: 6px; margin-top: 8px;
 }
 .vote-btn {
   background: none;
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 2px 8px;
-  font-size: 13px;
+  padding: 6px 14px;     /* was 2px 8px — increased for touch targets */
+  font-size: 14px;
   cursor: pointer;
   color: var(--text-secondary);
-  line-height: 1.6;
+  line-height: 1.4;
+  min-height: 36px;      /* comfortable touch target */
   transition: border-color 0.15s, background 0.15s;
 }
 .vote-btn.up.active   { background: #dcfce7; border-color: #22c55e; }
@@ -395,6 +397,14 @@ body {
 /* ─── Desktop max-width ─────────────────────────────────────────────────────  */
 @media (min-width: 680px) {
   .screen { max-width: 680px; margin: 0 auto; }
+  /* Center the fixed tab bar to match the content column */
+  #tab-bar {
+    max-width: 680px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+  }
 }
 
 /* ─── Search bar ─────────────────────────────────────────────────────────── */
@@ -429,6 +439,40 @@ body {
   display: none;
 }
 .search-clear.visible { display: block; }
+
+/* ─── Topic list quick-mark button ──────────────────────────────────────── */
+.topic-row-check {
+  margin-left: 10px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.topic-row-check:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+/* ─── Keyboard shortcut pill ─────────────────────────────────────────────── */
+code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--text);
+}
 
 /* ─── Settings: PAT / sync ────────────────────────────────────────────────── */
 .settings-input {

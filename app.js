@@ -18,6 +18,7 @@ let isLoading = true;
 let topicsSubView = null; // null = topic list; string = topic name being viewed
 let prefs = loadPrefs();  // { hideRead, dateFilter }
 let _preFocusEl = null;
+let _detailResult = null; // currently open result (for keyboard shortcuts)
 let searchQuery = '';     // shared search query across screens
 
 // ── Tab badge ─────────────────────────────────────────────────────────────
@@ -295,6 +296,7 @@ function _trapFocusHandler(e) {
 }
 
 function openDetail(result) {
+  _detailResult = result;
   markRead(readSet, result.url);
   updateTabBadge();
 
@@ -423,12 +425,26 @@ function closeDetail() {
   document.removeEventListener('keydown', _trapFocusHandler);
   detailSheet.classList.add('hidden');
   document.body.style.overflow = '';
+  _detailResult = null;
   if (_preFocusEl) { _preFocusEl.focus(); _preFocusEl = null; }
 }
 
 detailClose.addEventListener('click', closeDetail);
 detailBackdrop.addEventListener('click', closeDetail);
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeDetail(); return; }
+  // u = mark-as-unread while detail sheet is open (skip if focus is a textarea/input)
+  if (e.key === 'u' && _detailResult && !detailSheet.classList.contains('hidden')) {
+    const tag = document.activeElement?.tagName;
+    if (tag !== 'TEXTAREA' && tag !== 'INPUT') {
+      markUnread(readSet, _detailResult.url);
+      updateTabBadge();
+      const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
+      if (activeTab) renderActiveScreen(activeTab);
+      closeDetail();
+    }
+  }
+});
 
 // ── Shared utilities ───────────────────────────────────────────────────────
 
@@ -569,6 +585,23 @@ function renderTopicList() {
     seg.appendChild(btn);
   });
   toolbar.appendChild(seg);
+
+  // Global mark-all-read across every topic
+  const allTopicResults = Object.values(index).flat();
+  const hasAnyUnread = allTopicResults.some(r => !readSet.has(r.url));
+  if (hasAnyUnread) {
+    const markAllBtn = document.createElement('button');
+    markAllBtn.className = 'toggle-btn';
+    markAllBtn.style.marginLeft = 'auto';
+    markAllBtn.textContent = 'Mark all read';
+    markAllBtn.addEventListener('click', () => {
+      markAllRead(readSet, allTopicResults);
+      updateTabBadge();
+      renderTopicList();
+    });
+    toolbar.appendChild(markAllBtn);
+  }
+
   screen.appendChild(toolbar);
 
   screen.appendChild(makeSearchBar(() => renderTopicList()));
@@ -635,6 +668,21 @@ function renderTopicList() {
       esc.className = 'escalation-badge topic-escalation-badge';
       esc.textContent = '\u26a1';
       row.appendChild(esc);
+    }
+
+    // Quick mark-read button: visible when there are unreads; marks without opening
+    if (unreadCount > 0) {
+      const checkBtn = document.createElement('button');
+      checkBtn.className = 'topic-row-check';
+      checkBtn.title = 'Mark all read';
+      checkBtn.textContent = '\u2713';
+      checkBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        filtered.forEach(r => markRead(readSet, r.url));
+        updateTabBadge();
+        renderTopicList();
+      });
+      row.appendChild(checkBtn);
     }
 
     row.addEventListener('click', () => renderTopicResults(name));
@@ -811,6 +859,21 @@ function renderSettings() {
   syncSection.appendChild(syncBtn);
   syncSection.appendChild(syncStatus);
   screen.appendChild(syncSection);
+
+  // Keyboard shortcuts hint
+  const kbSection = document.createElement('div');
+  kbSection.className = 'settings-section';
+  const kbLabel = document.createElement('div');
+  kbLabel.className = 'settings-label';
+  kbLabel.textContent = 'Keyboard shortcuts';
+  const kbList = document.createElement('div');
+  kbList.className = 'settings-value';
+  kbList.style.cssText = 'font-size:13px; line-height:2; color: var(--text-secondary);';
+  kbList.innerHTML = '<code>Esc</code> &nbsp; Close detail sheet<br>'
+                   + '<code>u</code> &nbsp;&nbsp; Mark as unread (while detail is open)';
+  kbSection.appendChild(kbLabel);
+  kbSection.appendChild(kbList);
+  screen.appendChild(kbSection);
 }
 
 init();
