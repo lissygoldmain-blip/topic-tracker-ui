@@ -595,7 +595,7 @@ function renderTopicList() {
     markAllBtn.style.marginLeft = 'auto';
     markAllBtn.textContent = 'Mark all read';
     markAllBtn.addEventListener('click', () => {
-      markAllRead(readSet, allTopicResults);
+      allTopicResults.forEach(r => markRead(readSet, r.url));
       updateTabBadge();
       renderTopicList();
     });
