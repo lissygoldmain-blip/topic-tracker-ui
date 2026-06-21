@@ -26,9 +26,8 @@ let searchQuery = '';     // shared search query across screens
 function updateTabBadge() {
   const btn = document.querySelector('.tab-btn[data-tab="highlights"]');
   if (!btn) return;
-  const all        = flatResults(index);
-  let highlights   = computeHighlights(all);
-  highlights       = filterByAge(highlights, prefs.dateFilter);
+  const all        = filterByAge(flatResults(index), prefs.dateFilter);
+  const highlights = computeHighlights(all);
   const unread     = highlights.filter(r => !readSet.has(r.url)).length;
   btn.textContent = '';
   btn.appendChild(document.createTextNode('Highlights'));
@@ -515,9 +514,8 @@ function renderHighlights() {
   markAllBtn.textContent = 'Mark all read';
   markAllBtn.style.marginLeft = '4px';
   markAllBtn.addEventListener('click', () => {
-    const all      = flatResults(index);
-    let highlights = computeHighlights(all);
-    highlights     = filterByAge(highlights, prefs.dateFilter);
+    const all        = filterByAge(flatResults(index), prefs.dateFilter);
+    const highlights = computeHighlights(all);
     highlights.forEach(r => markRead(readSet, r.url));
     updateTabBadge();
     renderHighlights();
@@ -529,9 +527,8 @@ function renderHighlights() {
   screen.appendChild(makeSearchBar(() => renderHighlights()));
 
   // ── Results ───────────────────────────────────────────────────────────
-  const all = flatResults(index);
-  let highlights = computeHighlights(all);
-  highlights = filterByAge(highlights, prefs.dateFilter);
+  const all = filterByAge(flatResults(index), prefs.dateFilter);
+  const highlights = computeHighlights(all);
   let sorted = sortResults(highlights, readSet);
   if (prefs.hideRead) sorted = sorted.filter(r => !readSet.has(r.url));
   if (searchQuery) sorted = sorted.filter(r => matchesSearch(r, searchQuery));
@@ -738,9 +735,38 @@ function renderTopicResults(topicName) {
     return;
   }
 
-  sorted.forEach(result => {
-    screen.appendChild(renderCard(result, { showTopicPill: false, showNoveltyDot: false }));
-  });
+  // Section into "Worth your time" (high relevance / escalations) and a collapsed "More".
+  const isWorth = r => (r.novelty_score || 0) >= 0.65 || r.escalation_trigger !== null;
+  const worth = sorted.filter(isWorth);
+  const more  = sorted.filter(r => !isWorth(r));
+  const card  = r => renderCard(r, { showTopicPill: false, showNoveltyDot: false });
+  const sectionLabel = text => {
+    const el = document.createElement('div');
+    el.textContent = text;
+    el.style.cssText = 'font-size:13px; font-weight:600; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.04em; margin:4px 0 10px;';
+    return el;
+  };
+
+  if (worth.length && more.length) screen.appendChild(sectionLabel('Worth your time'));
+  (worth.length ? worth : more).forEach(r => screen.appendChild(card(r)));
+
+  if (worth.length && more.length) {
+    const toggle = document.createElement('button');
+    toggle.className = 'toggle-btn';
+    toggle.style.cssText = 'margin:8px 0 14px;';
+    toggle.textContent = `Show ${more.length} more`;
+    const moreList = document.createElement('div');
+    moreList.style.display = 'none';
+    more.forEach(r => moreList.appendChild(card(r)));
+    let shown = false;
+    toggle.addEventListener('click', () => {
+      shown = !shown;
+      moreList.style.display = shown ? '' : 'none';
+      toggle.textContent = shown ? 'Show less' : `Show ${more.length} more`;
+    });
+    screen.appendChild(toggle);
+    screen.appendChild(moreList);
+  }
 }
 
 function renderSettings() {

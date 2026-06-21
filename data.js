@@ -33,8 +33,17 @@ export async function fetchIndex() {
 
 // ── Highlights filter ────────────────────────────────────────────────────
 
-export function computeHighlights(allResults) {
-  return allResults.filter(r => r.novelty_score >= 0.8 || r.escalation_trigger !== null);
+// Top-N by relevance score (with a quality floor); escalations always included.
+// Replaces a global >=0.8 cutoff — scores aren't comparable across topics, so a fixed
+// threshold over-floods some topics (AI, Politics) and starves others (Immigration).
+// Top-N is robust either way. Caller should pass an already date-filtered list.
+export function computeHighlights(allResults, { limit = 15, floor = 0.5 } = {}) {
+  const escalated = allResults.filter(r => r.escalation_trigger !== null);
+  const escUrls   = new Set(escalated.map(r => r.url));
+  const ranked    = allResults
+    .filter(r => !escUrls.has(r.url) && (r.novelty_score || 0) >= floor)
+    .sort((a, b) => (b.novelty_score || 0) - (a.novelty_score || 0));
+  return [...escalated, ...ranked].slice(0, Math.max(limit, escalated.length));
 }
 
 // ── Sorting ──────────────────────────────────────────────────────────────
